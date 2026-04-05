@@ -1,3 +1,7 @@
-from .routes import loads_bp
+"""Loads domain package.
 
-__all__ = ["loads_bp"]
+Avoid importing route modules at package import time so service/client imports
+remain lightweight.
+"""
+
+__all__ = []

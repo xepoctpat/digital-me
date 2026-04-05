@@ -33,6 +33,17 @@ logger = logging.getLogger(__name__)
 
 talk_bp = Blueprint('talk', __name__, url_prefix='/api/talk')
 
+
+def _serialize_chat_response(response):
+    """Convert SDK chat responses into JSON-serializable objects."""
+    if hasattr(response, 'model_dump'):
+        return response.model_dump()
+
+    if hasattr(response, 'dict'):
+        return response.dict()
+
+    return response
+
 @talk_bp.route("/chat", methods=["POST"])
 @validate()
 def chat(body: ChatRequest):
@@ -113,7 +124,7 @@ def chat_json(body: ChatRequest):
                 stream=False,
                 json_response=True,
             )
-            return jsonify(APIResponse.success(response))
+            return jsonify(APIResponse.success(_serialize_chat_response(response)))
 
         except Exception as e:
             logger.error(f"API call failed: {str(e)}", exc_info=True)

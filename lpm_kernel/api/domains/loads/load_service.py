@@ -9,7 +9,6 @@ from typing import Optional, Dict, Any, Tuple
 from lpm_kernel.models.load import Load
 from lpm_kernel.common.repository.database_session import DatabaseSession
 from lpm_kernel.api.domains.loads.dto import LoadDTO
-from lpm_kernel.api.domains.trainprocess.trainprocess_service import TrainProcessService
 
 logger = logging.getLogger(__name__)
 
@@ -425,6 +424,8 @@ class LoadService:
     def _reset_training_progress() -> None:
         """Reset training progress objects in memory"""
         try:
+            from lpm_kernel.api.domains.trainprocess.trainprocess_service import TrainProcessService
+
             # Get all possible training progress file patterns
             base_dir = os.getenv('LOCAL_BASE_DIR', '.')
             progress_dir = os.path.join(base_dir, 'data', 'progress')

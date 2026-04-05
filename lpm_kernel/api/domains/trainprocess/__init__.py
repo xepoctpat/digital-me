@@ -1,3 +1,7 @@
-from .routes import trainprocess_bp
+"""Training process domain package.
 
-__all__ = ["trainprocess_bp"]
+Do not import route modules eagerly; training dependencies are optional for
+chat-only and external local-LLM Windows-native setups.
+"""
+
+__all__ = []

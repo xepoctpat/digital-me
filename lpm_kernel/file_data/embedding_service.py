@@ -12,7 +12,7 @@ logger = get_train_process_logger()
 
 class EmbeddingService:
     def __init__(self):
-        from lpm_kernel.file_data.chroma_utils import detect_embedding_model_dimension
+        from lpm_kernel.file_data.chroma_utils import resolve_embedding_model_dimension
         from lpm_kernel.api.services.user_llm_config_service import UserLLMConfigService
         
         chroma_path = os.getenv("CHROMA_PERSIST_DIRECTORY", "./data/chroma_db")
@@ -24,10 +24,11 @@ class EmbeddingService:
             user_llm_config_service = UserLLMConfigService()
             user_llm_config = user_llm_config_service.get_available_llm()
             
-            if user_llm_config and user_llm_config.embedding_model_name:
-                # Detect dimension based on model name
-                self.dimension = detect_embedding_model_dimension(user_llm_config.embedding_model_name)
-                logger.info(f"Detected embedding dimension: {self.dimension} for model: {user_llm_config.embedding_model_name}")
+            if user_llm_config:
+                self.dimension = resolve_embedding_model_dimension(user_llm_config)
+                logger.info(
+                    f"Resolved embedding dimension: {self.dimension} for model: {getattr(user_llm_config, 'embedding_model_name', 'unknown')}"
+                )
             else:
                 # Default to OpenAI dimension if no config found
                 self.dimension = 1536

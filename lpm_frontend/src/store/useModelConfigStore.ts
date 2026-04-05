@@ -28,11 +28,12 @@ export const useModelConfigStore = create<ModelConfigState>((set, get) => ({
           throw new Error(res.data.message);
         }
 
+        const currentConfig = (res.data.data || {}) as IModelConfig;
         const { thinking_model_name, thinking_api_key, thinking_endpoint, ...baseModelConfig } =
-          res.data.data;
+          currentConfig;
 
         set({
-          modelConfig: { ...(get().modelConfig as IModelConfig), ...res.data.data },
+          modelConfig: { ...(get().modelConfig as IModelConfig), ...currentConfig },
           baseModelConfig: { ...(get().baseModelConfig as IBaseModelParams), ...baseModelConfig },
           thinkingModelConfig: {
             ...(get().thinkingModelConfig as IThinkingModelParams),

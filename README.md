@@ -92,6 +92,8 @@ make docker-up
 👉 For detailed instructions — including integrated (non-Docker) setup, model selection, memory requirements, and platform-specific tips,
 check the full [Deployment Guide on GitBook](https://secondme.gitbook.io/secondme/guides/deployment).
 
+🤖 For a verified local Ollama workflow — including model names, `.env` parameters, PowerShell script flags, and native Windows startup commands — see [Ollama setup, parameters, and startup guide](docs/Custom%20Model%20Config%28Ollama%29.md).
+
 🧭 For a private, local-first workflow — including Windows-friendly local startup and importing exported memory materials from the hosted app into your local instance — see [Importing Hosted Memories into Local Second Me](docs/Importing%20Hosted%20Memories%20into%20Local%20Second%20Me.md).
 
 ❓ Got questions about setup, models, or any troubleshooting? [Check our FAQ](https://secondme.gitbook.io/secondme/faq).

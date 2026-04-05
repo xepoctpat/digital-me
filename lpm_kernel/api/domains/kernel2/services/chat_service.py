@@ -28,6 +28,18 @@ class ChatService:
         """Initialize chat service"""
         # Base strategy chain, must contain at least one base strategy
         self.default_strategy_chain = [BasePromptStrategy, RoleBasedStrategy]
+        self.user_llm_config_service = UserLLMConfigService()
+
+    def _get_default_model_name(self) -> str:
+        """Resolve the configured chat model name for external/local providers."""
+        try:
+            user_llm_config = self.user_llm_config_service.get_available_llm()
+            if user_llm_config and user_llm_config.chat_model_name:
+                return user_llm_config.chat_model_name
+        except Exception as e:
+            logger.warning(f"Unable to resolve configured chat model name: {e}")
+
+        return "models/lpm"
     
     def _get_strategy_chain(
         self,
@@ -57,9 +69,17 @@ class ChatService:
             
         # Use default strategy chain
         result_chain = self.default_strategy_chain.copy()
+
+        metadata = request.metadata or {}
+        enable_l0_retrieval = bool(
+            getattr(request, "enable_l0_retrieval", False) or metadata.get("enable_l0_retrieval", False)
+        )
+        enable_l1_retrieval = bool(
+            getattr(request, "enable_l1_retrieval", False) or metadata.get("enable_l1_retrieval", False)
+        )
         
         # Add knowledge enhancement strategy based on request parameters
-        if request.enable_l0_retrieval or request.enable_l1_retrieval:
+        if enable_l0_retrieval or enable_l1_retrieval:
             result_chain.append(KnowledgeEnhancedStrategy)
             
         return result_chain
@@ -94,7 +114,13 @@ class ChatService:
             
         return messages
     
-    def _process_chat_response(self, chunk, full_response: Optional[Any], full_content: str) -> Tuple[Any, str, Optional[str]]:
+    def _process_chat_response(
+        self,
+        chunk,
+        full_response: Optional[Any],
+        full_content: str,
+        model_name: Optional[str] = None,
+    ) -> Tuple[Any, str, Optional[str]]:
         """
         Process custom chat_response format data
 
@@ -124,11 +150,12 @@ class ChatService:
             
         # Initialize response object (if needed)
         if not full_response:
+            resolved_model_name = model_name or chunk.get("model") if isinstance(chunk, dict) else model_name
             full_response = {
                 "id": str(uuid.uuid4()),
                 "object": "chat.completion.chunk",
                 "created": int(datetime.now().timestamp()),
-                "model": "models/lpm",
+                "model": resolved_model_name or self._get_default_model_name(),
                 "system_fingerprint": None,
                 "choices": [
                     {
@@ -148,7 +175,13 @@ class ChatService:
             
         return full_response, full_content, finish_reason
 
-    def _process_openai_response(self, chunk, full_response: Optional[Any], full_content: str) -> Tuple[Any, str, Optional[str]]:
+    def _process_openai_response(
+        self,
+        chunk,
+        full_response: Optional[Any],
+        full_content: str,
+        model_name: Optional[str] = None,
+    ) -> Tuple[Any, str, Optional[str]]:
         """
         Process OpenAI format response data
 
@@ -177,7 +210,7 @@ class ChatService:
                 "id": getattr(chunk, 'id', str(uuid.uuid4())),
                 "object": "chat.completion.chunk",
                 "created": int(datetime.now().timestamp()),
-                "model": "models/lpm",
+                "model": getattr(chunk, 'model', None) or model_name or self._get_default_model_name(),
                 "system_fingerprint": getattr(chunk, 'system_fingerprint', None),
                 "choices": [
                     {
@@ -220,6 +253,7 @@ class ChatService:
         chunk_count = 0
         
         try:
+            resolved_model_name = self._get_default_model_name()
             for chunk in response_iterator:
                 if chunk is None:
                     logger.warning("Received None chunk, skipping")
@@ -236,11 +270,11 @@ class ChatService:
                 
                 if is_chat_response:
                     full_response, full_content, chunk_finish_reason = self._process_chat_response(
-                        chunk, full_response, full_content
+                        chunk, full_response, full_content, resolved_model_name
                     )
                 else:
                     full_response, full_content, chunk_finish_reason = self._process_openai_response(
-                        chunk, full_response, full_content
+                        chunk, full_response, full_content, resolved_model_name
                     )
                     
                 if chunk_finish_reason:
@@ -298,7 +332,8 @@ class ChatService:
         """
         logger.info(f"Chat request: {request}")
         # Build messages
-        message_builder = MultiTurnMessageBuilder(request, strategy_chain=strategy_chain)
+        final_strategy_chain = self._get_strategy_chain(request, strategy_chain)
+        message_builder = MultiTurnMessageBuilder(request, strategy_chain=final_strategy_chain)
         messages = message_builder.build_messages(context)
         
         # Log debug information
@@ -310,8 +345,7 @@ class ChatService:
         # Use provided client or default local_llm_service.client
         current_client = client if client is not None else local_llm_service.client
         
-        self.user_llm_config_service = UserLLMConfigService()
-        self.user_llm_config = self.user_llm_config_service.get_available_llm()
+        resolved_model_name = request.model or self._get_default_model_name()
         
         # Prepare API call parameters
         api_params = {
@@ -323,7 +357,7 @@ class ChatService:
             "tool_choice": None,  # Optional: If function calling or similar features are needed
             "max_tokens": request.max_tokens,
             "stream": stream,
-            "model": request.model or "models/lpm",
+            "model": resolved_model_name,
             "metadata": request.metadata
         }
         
@@ -336,6 +370,7 @@ class ChatService:
             api_params.update(model_params)
 
         logger.info(f"Current client base URL: {current_client.base_url}")
+        logger.info(f"Resolved model name: {resolved_model_name}")
         # logger.info(f"Using model parameters: {api_params}")
         
         # Call LLM API

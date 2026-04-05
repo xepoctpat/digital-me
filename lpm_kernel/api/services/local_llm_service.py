@@ -1,10 +1,9 @@
 import os
 import json
 import logging
-import psutil
+import requests
 import time
 import subprocess
-import torch  # Add torch import for CUDA detection
 import threading
 import queue
 from typing import Iterator, Any, Optional, Generator, Dict
@@ -15,6 +14,16 @@ from lpm_kernel.api.domains.kernel2.dto.server_dto import ServerStatus, ProcessI
 from lpm_kernel.configs.config import Config
 import uuid
 
+try:
+    import psutil
+except ImportError:  # pragma: no cover - optional dependency for lightweight chat-only setups
+    psutil = None
+
+try:
+    import torch
+except ImportError:  # pragma: no cover - optional dependency for non-training / external-LLM setups
+    torch = None
+
 logger = logging.getLogger(__name__)
 
 class LocalLLMService:
@@ -23,13 +32,92 @@ class LocalLLMService:
     def __init__(self):
         self._client = None
         self._stopping_server = False
+        self._warned_missing_dependencies = set()
+
+    def _get_default_chat_model_name(self) -> str:
+        """Resolve the configured chat model name for local/external services."""
+        try:
+            from lpm_kernel.api.services.user_llm_config_service import UserLLMConfigService
+
+            user_llm_config = UserLLMConfigService().get_available_llm()
+            if user_llm_config and user_llm_config.chat_model_name:
+                return user_llm_config.chat_model_name
+        except Exception as e:
+            logger.warning(f"Unable to resolve default chat model name: {e}")
+
+        return "models/lpm"
+
+    def _warn_missing_dependency(self, dependency_name: str, message: str) -> None:
+        if dependency_name in self._warned_missing_dependencies:
+            return
+
+        logger.warning(message)
+        self._warned_missing_dependencies.add(dependency_name)
+
+    def _is_psutil_available(self) -> bool:
+        if psutil is not None:
+            return True
+
+        self._warn_missing_dependency(
+            "psutil",
+            "psutil is not installed; managed llama-server process inspection is unavailable. External OpenAI-compatible mode can still work.",
+        )
+        return False
+
+    def _is_torch_cuda_available(self) -> bool:
+        if torch is None:
+            self._warn_missing_dependency(
+                "torch",
+                "torch is not installed; GPU acceleration checks are unavailable. Falling back to CPU / external LLM mode.",
+            )
+            return False
+
+        try:
+            return bool(torch.cuda.is_available())
+        except Exception as e:
+            logger.warning(f"Failed to query torch CUDA availability: {e}")
+            return False
+
+    def _normalize_openai_base_url(self, base_url: Optional[str]) -> Optional[str]:
+        """Normalize OpenAI-compatible base URLs to include the `/v1` suffix."""
+        if not base_url:
+            return None
+
+        normalized_base_url = base_url.rstrip("/")
+        if normalized_base_url.endswith("/v1"):
+            return normalized_base_url
+
+        return f"{normalized_base_url}/v1"
+
+    def _get_local_service_base_url(self) -> Optional[str]:
+        config = Config.from_env()
+        return self._normalize_openai_base_url(config.get("LOCAL_LLM_SERVICE_URL"))
+
+    def _check_external_service_status(self) -> ServerStatus:
+        """Check whether an external OpenAI-compatible local service is reachable."""
+        base_url = self._get_local_service_base_url()
+        if not base_url:
+            return ServerStatus.not_running(service_type="external")
+
+        try:
+            response = requests.get(
+                f"{base_url}/models",
+                headers={"Authorization": "Bearer sk-no-key-required"},
+                timeout=5,
+            )
+            if response.ok:
+                return ServerStatus.external(base_url)
+        except requests.RequestException:
+            pass
+
+        return ServerStatus.not_running(service_type="external", base_url=base_url)
         
     @property
     def client(self) -> OpenAI:
         config = Config.from_env()
         """Get the OpenAI client for local LLM server"""
         if self._client is None:
-            base_url = config.get("LOCAL_LLM_SERVICE_URL")
+            base_url = self._normalize_openai_base_url(config.get("LOCAL_LLM_SERVICE_URL"))
             if not base_url:
                 raise ValueError("LOCAL_LLM_SERVICE_URL environment variable is not set")
                 
@@ -52,14 +140,13 @@ class LocalLLMService:
         """
         try:
             # Check if server is already running
-            status = self.get_server_status()
+            status = self.get_managed_server_status()
             if status.is_running:
                 logger.info("LLama server is already running")
                 return True
 
             # Check for CUDA availability if GPU was requested
-            cuda_available = torch.cuda.is_available() if use_gpu else False
-            cuda_available = False
+            cuda_available = self._is_torch_cuda_available() if use_gpu else False
             gpu_info = ""
             
             if use_gpu and cuda_available:
@@ -178,7 +265,7 @@ class LocalLLMService:
                 # Ensure llama.cpp is built with CUDA support before running the server if GPU is required.
 
                 # Pre-heat GPU to ensure faster initial response
-                if torch.cuda.is_available():
+                if self._is_torch_cuda_available():
                     logger.info("Pre-warming GPU to reduce initial latency...")
                     dummy_tensor = torch.zeros(1, 1).cuda()
                     del dummy_tensor
@@ -235,9 +322,12 @@ class LocalLLMService:
             ServerStatus: Service status object containing information about whether processes are still running
         """
         try:
+            if not self._is_psutil_available():
+                return self.get_managed_server_status()
+
             if self._stopping_server:
                 logger.info("Server is already in the process of stopping")
-                return self.get_server_status()
+                return self.get_managed_server_status()
             
             self._stopping_server = True
         
@@ -281,7 +371,7 @@ class LocalLLMService:
                     logger.info("No running llama-server process found")
                 
                 # Check again if any llama-server processes are still running
-                return self.get_server_status()
+                return self.get_managed_server_status()
             
             finally:
                 self._stopping_server = False
@@ -293,13 +383,35 @@ class LocalLLMService:
 
     def get_server_status(self) -> ServerStatus:
         """
-        Get the current status of llama-server
+        Get the current status of the configured local LLM service.
+        Returns: ServerStatus object
+        """
+        managed_status = self.get_managed_server_status()
+        if managed_status.is_running:
+            return managed_status
+
+        external_status = self._check_external_service_status()
+        if external_status.is_running:
+            return external_status
+
+        return ServerStatus.not_running(
+            service_type=external_status.service_type,
+            base_url=external_status.base_url,
+        )
+
+    def get_managed_server_status(self) -> ServerStatus:
+        """
+        Get the status of the managed local llama-server process only.
         Returns: ServerStatus object
         """
         try:
             base_dir = os.getcwd()
             server_path = os.path.join(base_dir, "llama.cpp", "build", "bin", "llama-server")
             server_exec_name = os.path.basename(server_path)
+            base_url = self._get_local_service_base_url()
+
+            if not self._is_psutil_available():
+                return ServerStatus.not_running(service_type="managed", base_url=base_url)
             
             for proc in psutil.process_iter(["pid", "name", "cmdline"]):
                 try:
@@ -314,15 +426,19 @@ class LocalLLMService:
                                 create_time=proc.create_time(),
                                 cmdline=cmdline,
                             )
-                            return ServerStatus.running(process_info)
+                            return ServerStatus.running(
+                                process_info,
+                                service_type="managed",
+                                base_url=base_url,
+                            )
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                     continue
                     
-            return ServerStatus.not_running()
+            return ServerStatus.not_running(service_type="managed", base_url=base_url)
             
         except Exception as e:
             logger.error(f"Error checking llama-server status: {str(e)}")
-            return ServerStatus.not_running()
+            return ServerStatus.not_running(service_type="managed")
 
     def _parse_response_chunk(self, chunk):
         """Parse different response chunk formats into a standardized format."""
@@ -335,11 +451,12 @@ class LocalLLMService:
             # Handle custom format
             if isinstance(chunk, dict) and "type" in chunk and chunk["type"] == "chat_response":
                 logger.info(f"Processing custom format response: {chunk}")
+                resolved_model_name = chunk.get("model") or self._get_default_chat_model_name()
                 return {
                     "id": str(uuid.uuid4()),  # Generate a unique ID
                     "object": "chat.completion.chunk",
                     "created": int(datetime.now().timestamp()),
-                    "model": "models/lpm",
+                    "model": resolved_model_name,
                     "system_fingerprint": None,
                     "choices": [
                         {
@@ -370,7 +487,7 @@ class LocalLLMService:
                 "id": chunk.id,
                 "object": "chat.completion.chunk",
                 "created": int(datetime.now().timestamp()),
-                "model": "models/lpm",
+                "model": getattr(chunk, 'model', None) or self._get_default_chat_model_name(),
                 "system_fingerprint": chunk.system_fingerprint if hasattr(chunk, 'system_fingerprint') else None,
                 "choices": [
                     {
@@ -489,7 +606,7 @@ class LocalLLMService:
                         "id": str(uuid.uuid4()),
                         "object": "chat.completion.chunk",
                         "created": int(datetime.now().timestamp()),
-                        "model": "models/lpm",
+                        "model": self._get_default_chat_model_name(),
                         "system_fingerprint": None,
                         "choices": [
                             {

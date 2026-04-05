@@ -163,7 +163,11 @@ const TrainingConfiguration: React.FC<TrainingConfigurationProps> = ({
                     <CustomModelIcon className="h-5 w-5 mr-2 text-blue-600" />
                   )}
                   <span className="font-medium">
-                    {modelConfig.provider_type === 'openai' ? 'OpenAI' : 'Custom Model'}
+                    {modelConfig.provider_type === 'openai'
+                      ? 'OpenAI'
+                      : modelConfig.provider_type === 'ollama'
+                        ? 'Ollama'
+                        : 'Custom Model'}
                   </span>
                   <button
                     className={classNames(

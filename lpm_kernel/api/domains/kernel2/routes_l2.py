@@ -2,7 +2,6 @@ import logging
 import os
 import time
 import sys
-import torch  # Add torch import for CUDA detection
 import traceback
 from dataclasses import asdict
 
@@ -33,6 +32,38 @@ kernel2_bp = Blueprint("kernel2", __name__, url_prefix="/api/kernel2")
 script_executor = ScriptExecutor()
 
 
+def _serialize_chat_response(response):
+    """Convert SDK chat responses into JSON-serializable objects."""
+    if hasattr(response, "model_dump"):
+        return response.model_dump()
+
+    if hasattr(response, "dict"):
+        return response.dict()
+
+    return response
+
+
+def _get_cuda_runtime_info():
+    """Safely query torch CUDA information without making torch a hard import-time dependency."""
+    try:
+        import torch
+
+        cuda_available = bool(torch.cuda.is_available())
+        cuda_info = {}
+
+        if cuda_available:
+            cuda_info = {
+                "device_count": torch.cuda.device_count(),
+                "current_device": torch.cuda.current_device(),
+                "device_name": torch.cuda.get_device_name(0)
+            }
+
+        return cuda_available, cuda_info
+    except Exception as e:
+        logger.warning(f"CUDA runtime info unavailable: {e}")
+        return False, {}
+
+
 @kernel2_bp.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint"""
@@ -40,16 +71,24 @@ def health_check():
     app_name = config.app_name or "Service"  # Add default value to prevent None
 
     status = local_llm_service.get_server_status()
-    if status.is_running and status.process_info:
+    if status.is_running:
+        response_data = {
+            "status": "running",
+            "service_type": status.service_type,
+            "base_url": status.base_url,
+        }
+
+        if status.process_info:
+            response_data.update({
+                "pid": status.process_info.pid,
+                "cpu_percent": status.process_info.cpu_percent,
+                "memory_percent": status.process_info.memory_percent,
+                "uptime": time.time() - status.process_info.create_time,
+            })
+
         return jsonify(
             APIResponse.success(
-                data={
-                    "status": "running",
-                    "pid": status.process_info.pid,
-                    "cpu_percent": status.process_info.cpu_percent,
-                    "memory_percent": status.process_info.memory_percent,
-                    "uptime": time.time() - status.process_info.create_time,
-                }
+                data=response_data
             )
         )
     else:
@@ -109,14 +148,15 @@ def start_llama_server():
         status = local_llm_service.get_server_status()
         
         # Return success response with GPU info
-        gpu_info = "with GPU acceleration" if use_gpu and torch.cuda.is_available() else "with CPU only"
+        cuda_available, _ = _get_cuda_runtime_info()
+        gpu_info = "with GPU acceleration" if use_gpu and cuda_available else "with CPU only"
         return jsonify(
             APIResponse.success(
                 data={
                     "model_name": model_name,
                     "gguf_path": gguf_path,
                     "status": "running" if status.is_running else "starting",
-                    "use_gpu": use_gpu and torch.cuda.is_available(),
+                    "use_gpu": use_gpu and cuda_available,
                     "gpu_info": gpu_info
                 },
                 message=f"llama-server service started {gpu_info}"
@@ -176,7 +216,7 @@ def stop_llama_server():
 def get_llama_server_status():
     """Get llama-server service status"""
     try:
-        status = local_llm_service.get_server_status()
+        status = local_llm_service.get_managed_server_status()
         return APIResponse.success(asdict(status))
 
     except Exception as e:
@@ -262,7 +302,7 @@ def chat(body: ChatRequest):
                 return local_llm_service.handle_stream_response(response)
             else:
                 # For non-streaming, return the complete response as JSON
-                return jsonify(response)
+                return jsonify(_serialize_chat_response(response))
 
         except ValueError as e:
             error_msg = str(e)
@@ -297,16 +337,7 @@ def chat(body: ChatRequest):
 def check_cuda_available():
     """Check if CUDA is available for model training/inference"""
     try:
-        import torch
-        cuda_available = torch.cuda.is_available()
-        cuda_info = {}
-        
-        if cuda_available:
-            cuda_info = {
-                "device_count": torch.cuda.device_count(),
-                "current_device": torch.cuda.current_device(),
-                "device_name": torch.cuda.get_device_name(0)
-            }
+        cuda_available, cuda_info = _get_cuda_runtime_info()
         
         return jsonify(APIResponse.success(
             data={

@@ -1,4 +1,4 @@
-.PHONY: install test format lint all setup start stop restart restart-backend restart-force help docker-build docker-up docker-down docker-build-backend docker-build-frontend docker-restart-backend docker-restart-backend-fast docker-restart-backend-smart docker-restart-frontend docker-restart-all docker-check-cuda docker-use-gpu docker-use-cpu
+.PHONY: install test format lint all setup start stop restart restart-backend restart-force status help docker-build docker-up docker-down docker-build-backend docker-build-frontend docker-restart-backend docker-restart-backend-fast docker-restart-backend-smart docker-restart-frontend docker-restart-all docker-check-cuda docker-use-gpu docker-use-cpu
 
 # Check for GPU flag file and set Docker Compose file accordingly
 ifeq ($(wildcard .gpu_selected),)
@@ -13,6 +13,7 @@ endif
 ifeq ($(OS),Windows_NT)
     # Set Windows variables
     WINDOWS := 1
+	POWERSHELL_FILE := powershell.exe -NoProfile -ExecutionPolicy Bypass -File
     # Set UTF-8 code page for Windows to display Unicode characters
     SET_UTF8 := $(shell chcp 65001 >nul 2>&1 || echo)
     # No need to check for Apple Silicon on Windows
@@ -166,25 +167,53 @@ else
 endif
 
 setup:
+ifeq ($(WINDOWS),1)
+	$(POWERSHELL_FILE) scripts\setup.ps1
+else
 	./scripts/setup.sh
+endif
 
 start:
+ifeq ($(WINDOWS),1)
+	$(POWERSHELL_FILE) scripts\start.ps1
+else
 	./scripts/start.sh
+endif
 
 stop:
+ifeq ($(WINDOWS),1)
+	$(POWERSHELL_FILE) scripts\stop.ps1
+else
 	./scripts/stop.sh
+endif
 
 restart:
+ifeq ($(WINDOWS),1)
+	$(POWERSHELL_FILE) scripts\restart.ps1
+else
 	./scripts/restart.sh
+endif
 
 restart-backend:
+ifeq ($(WINDOWS),1)
+	$(POWERSHELL_FILE) scripts\restart-backend.ps1
+else
 	./scripts/restart-backend.sh
+endif
 
 restart-force:
+ifeq ($(WINDOWS),1)
+	$(POWERSHELL_FILE) scripts\restart-force.ps1
+else
 	./scripts/restart-force.sh
+endif
 
 status:
+ifeq ($(WINDOWS),1)
+	$(POWERSHELL_FILE) scripts\status.ps1
+else
 	./scripts/status.sh
+endif
 
 # Docker commands
 # Set Docker environment variable for all Docker commands

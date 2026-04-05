@@ -3,9 +3,26 @@ import os
 import chromadb
 from chromadb.config import Settings
 import logging
+import requests
 from lpm_kernel.configs.logging import get_train_process_logger
 
 logger = get_train_process_logger()
+
+
+KNOWN_EMBEDDING_MODEL_DIMENSIONS = {
+    # OpenAI models
+    "text-embedding-ada-002": 1536,
+    "text-embedding-3-small": 1536,
+    "text-embedding-3-large": 3072,
+
+    # Ollama / common local embedding models
+    "snowflake-arctic-embed": 768,
+    "snowflake-arctic-embed:110m": 768,
+    "nomic-embed-text": 768,
+    "nomic-embed-text:v1.5": 768,
+    "mxbai-embed-large": 1024,
+    "mxbai-embed-large:v1": 1024,
+}
 
 
 def create_persistent_chroma_client(chroma_path: Optional[str] = None):
@@ -38,6 +55,21 @@ def get_embedding_dimension(embedding: List[float]) -> int:
     return len(embedding)
 
 
+def match_known_embedding_dimension(model_name: str) -> Optional[int]:
+    """Return a known embedding dimension for a model name, if available."""
+    if not model_name:
+        return None
+
+    if model_name in KNOWN_EMBEDDING_MODEL_DIMENSIONS:
+        return KNOWN_EMBEDDING_MODEL_DIMENSIONS[model_name]
+
+    for known_model, dimension in KNOWN_EMBEDDING_MODEL_DIMENSIONS.items():
+        if known_model in model_name:
+            return dimension
+
+    return None
+
+
 def detect_embedding_model_dimension(model_name: str) -> Optional[int]:
     """
     Detect the dimension of an embedding model based on its name
@@ -49,33 +81,93 @@ def detect_embedding_model_dimension(model_name: str) -> Optional[int]:
     Returns:
         The dimension of the embedding model, or None if unknown
     """
-    # Common embedding model dimensions
-    model_dimensions = {
-        # OpenAI models
-        "text-embedding-ada-002": 1536,
-        "text-embedding-3-small": 1536,
-        "text-embedding-3-large": 3072,
-        
-        # Ollama models
-        "snowflake-arctic-embed": 768,
-        "snowflake-arctic-embed:110m": 768,
-        "nomic-embed-text": 768,
-        "nomic-embed-text:v1.5": 768,
-        "mxbai-embed-large": 1024,
-        "mxbai-embed-large:v1": 1024,
-    }
-    
-    # Try to find exact match
-    if model_name in model_dimensions:
-        return model_dimensions[model_name]
-    
-    # Try to find partial match
-    for model, dimension in model_dimensions.items():
-        if model in model_name:
-            return dimension
+    known_dimension = match_known_embedding_dimension(model_name)
+    if known_dimension is not None:
+        return known_dimension
     
     # Default to OpenAI dimension if unknown
     logger.warning(f"Unknown embedding model: {model_name}, defaulting to 1536 dimensions")
+    return 1536
+
+
+def probe_embedding_model_dimension(
+    embedding_endpoint: Optional[str],
+    embedding_api_key: Optional[str],
+    embedding_model_name: Optional[str],
+) -> Optional[int]:
+    """Probe an embedding provider for the real vector dimension of the configured model."""
+    if not embedding_endpoint or not embedding_model_name:
+        return None
+
+    normalized_endpoint = embedding_endpoint.rstrip("/")
+
+    try:
+        if "sentence-transformers" in normalized_endpoint:
+            from sentence_transformers import SentenceTransformer
+
+            os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+            parts = normalized_endpoint.split("/")
+            if len(parts) < 2:
+                raise ValueError("Invalid sentence-transformers endpoint")
+
+            hf_model_name = "/".join(parts[-2:])
+            logger.info(f"Probing Hugging Face embedding dimension for model: {hf_model_name}")
+            model = SentenceTransformer(hf_model_name)
+            sample_embedding = model.encode(["dimension probe"])
+            return get_embedding_dimension(sample_embedding[0])
+
+        logger.info(
+            f"Probing OpenAI-compatible embedding dimension for model: {embedding_model_name} via {normalized_endpoint}"
+        )
+        headers = {"Content-Type": "application/json"}
+        if embedding_api_key:
+            headers["Authorization"] = f"Bearer {embedding_api_key}"
+
+        response = requests.post(
+            f"{normalized_endpoint}/embeddings",
+            headers=headers,
+            json={"input": ["dimension probe"], "model": embedding_model_name},
+            timeout=30,
+        )
+        response.raise_for_status()
+        result = response.json()
+        embedding = result["data"][0]["embedding"]
+        return get_embedding_dimension(embedding)
+    except Exception as e:
+        logger.warning(
+            f"Failed to probe embedding dimension for model {embedding_model_name}: {str(e)}"
+        )
+        return None
+
+
+def resolve_embedding_model_dimension(user_llm_config: Any) -> int:
+    """Resolve the best-known embedding dimension for the configured provider/model."""
+    if not user_llm_config or not getattr(user_llm_config, "embedding_model_name", None):
+        logger.info("No embedding model configured, using default dimension: 1536")
+        return 1536
+
+    embedding_model_name = user_llm_config.embedding_model_name
+    known_dimension = match_known_embedding_dimension(embedding_model_name)
+    if known_dimension is not None:
+        logger.info(
+            f"Detected embedding dimension from known model mapping: {known_dimension} for model: {embedding_model_name}"
+        )
+        return known_dimension
+
+    probed_dimension = probe_embedding_model_dimension(
+        getattr(user_llm_config, "embedding_endpoint", None),
+        getattr(user_llm_config, "embedding_api_key", None),
+        embedding_model_name,
+    )
+    if probed_dimension is not None:
+        logger.info(
+            f"Detected embedding dimension by probing provider: {probed_dimension} for model: {embedding_model_name}"
+        )
+        return probed_dimension
+
+    logger.warning(
+        f"Falling back to default embedding dimension 1536 for unknown model: {embedding_model_name}"
+    )
     return 1536
 
 

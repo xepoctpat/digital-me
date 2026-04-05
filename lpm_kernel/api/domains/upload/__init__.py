@@ -1,3 +1,7 @@
-from .routes import upload_bp
+"""Upload domain package.
 
-__all__ = ['upload_bp']
+Keep package initialization side-effect free so importing helpers like
+`upload.client` does not eagerly import route modules.
+"""
+
+__all__ = []

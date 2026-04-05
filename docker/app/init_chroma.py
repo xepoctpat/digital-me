@@ -8,8 +8,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from lpm_kernel.api.services.user_llm_config_service import UserLLMConfigService
 from lpm_kernel.file_data.chroma_utils import (
     create_persistent_chroma_client,
-    detect_embedding_model_dimension,
     reinitialize_chroma_collections,
+    resolve_embedding_model_dimension,
 )
 
 def init_chroma_db():
@@ -23,12 +23,10 @@ def init_chroma_db():
         user_llm_config_service = UserLLMConfigService()
         user_llm_config = user_llm_config_service.get_available_llm()
         
-        if user_llm_config and user_llm_config.embedding_model_name:
-            # Detect dimension based on model name
-            dimension = detect_embedding_model_dimension(user_llm_config.embedding_model_name)
-            print(f"Detected embedding dimension: {dimension} for model: {user_llm_config.embedding_model_name}")
+        if user_llm_config:
+            dimension = resolve_embedding_model_dimension(user_llm_config)
+            print(f"Resolved embedding dimension: {dimension} for model: {getattr(user_llm_config, 'embedding_model_name', 'unknown')}")
         else:
-            # Default to OpenAI dimension if no config found
             dimension = 1536
             print(f"No embedding model configured, using default dimension: {dimension}")
     except Exception as e:

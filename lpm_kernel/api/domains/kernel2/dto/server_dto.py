@@ -22,13 +22,30 @@ class ServerStatus:
 
     is_running: bool  # if service is running
     process_info: Optional[ProcessInfo] = None  # process info
+    service_type: str = "managed"
+    base_url: Optional[str] = None
 
     @classmethod
-    def not_running(cls) -> "ServerStatus":
+    def not_running(cls, service_type: str = "managed", base_url: Optional[str] = None) -> "ServerStatus":
         """create a ServerStatus object representing a not running server"""
-        return cls(is_running=False)
+        return cls(is_running=False, service_type=service_type, base_url=base_url)
 
     @classmethod
-    def running(cls, process_info: ProcessInfo) -> "ServerStatus":
+    def running(
+        cls,
+        process_info: ProcessInfo,
+        service_type: str = "managed",
+        base_url: Optional[str] = None,
+    ) -> "ServerStatus":
         """create a ServerStatus object representing a running server"""
-        return cls(is_running=True, process_info=process_info)
+        return cls(
+            is_running=True,
+            process_info=process_info,
+            service_type=service_type,
+            base_url=base_url,
+        )
+
+    @classmethod
+    def external(cls, base_url: str) -> "ServerStatus":
+        """create a ServerStatus object representing a reachable external LLM service"""
+        return cls(is_running=True, process_info=None, service_type="external", base_url=base_url)
