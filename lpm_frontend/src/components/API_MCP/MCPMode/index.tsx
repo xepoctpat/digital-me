@@ -7,6 +7,7 @@ import './markdown.css';
 import { useSSE } from '@/hooks/useSSE';
 import { Badge, Segmented } from 'antd';
 import { useLoadInfoStore } from '@/store/useLoadInfoStore';
+import { PUBLIC_NETWORK_ENABLED } from '@/utils/networkMode';
 
 type responseTypeOptions = 'raw' | 'text';
 
@@ -95,11 +96,19 @@ const MCPMode = () => {
             </div>
 
             <div className="flex items-center pr-4">
-              <Badge status={isRegistered ? 'success' : 'error'} />
-              {isRegistered ? (
-                <div className="ml-2 text-[#5EC268] font-medium">IN SERVICE</div>
+              <Badge
+                status={
+                  PUBLIC_NETWORK_ENABLED ? (isRegistered ? 'success' : 'error') : 'processing'
+                }
+              />
+              {PUBLIC_NETWORK_ENABLED ? (
+                isRegistered ? (
+                  <div className="ml-2 text-[#5EC268] font-medium">PUBLIC MODE</div>
+                ) : (
+                  <div className="ml-2 text-[#ff4d4f] font-medium">NOT IN SERVICE</div>
+                )
               ) : (
-                <div className="ml-2 text-[#ff4d4f] font-medium">NOT IN SERVICE</div>
+                <div className="ml-2 text-[#1677ff] font-medium">LOCAL MODE</div>
               )}
             </div>
           </div>

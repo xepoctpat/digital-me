@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS l1_shades (
     content_third_view TEXT,
     desc_second_view TEXT,
     content_second_view TEXT,
+    timelines TEXT,  -- JSON data stored as TEXT
+    cluster_info TEXT,  -- JSON data stored as TEXT
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (version) REFERENCES l1_versions(version)
 );

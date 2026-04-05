@@ -58,6 +58,109 @@ class DocumentService:
         """
         return self._repository.list()
 
+    def _get_memory_metadata_map(self, document_ids: List[int]) -> Dict[int, Dict]:
+        """Fetch memory metadata associated with document records."""
+        if not document_ids:
+            return {}
+
+        try:
+            with DatabaseSession()._session_factory() as session:
+                query = select(Memory).where(
+                    Memory.document_id.in_([str(doc_id) for doc_id in document_ids])
+                )
+                memories = session.execute(query).scalars().all()
+
+            metadata_map: Dict[int, Dict] = {}
+            for memory in memories:
+                if not memory.document_id:
+                    continue
+
+                try:
+                    metadata_map[int(memory.document_id)] = memory.meta_data or {}
+                except (TypeError, ValueError):
+                    logger.warning(
+                        f"Skipping memory metadata with invalid document_id: {memory.document_id}"
+                    )
+
+            return metadata_map
+        except Exception as e:
+            logger.error(f"Error fetching memory metadata: {str(e)}", exc_info=True)
+            return {}
+
+    def _build_source_metadata_fields(self, metadata: Optional[Dict]) -> Dict:
+        """Expose hosted-export metadata alongside document API responses."""
+        metadata = metadata or {}
+        return {
+            "source_is_hosted_export": bool(metadata.get("source_is_hosted_export", False)),
+            "source_export_version": metadata.get("source_export_version"),
+            "source_doc_id": metadata.get("source_doc_id"),
+            "source_title": metadata.get("source_title"),
+            "source_type": metadata.get("source_type"),
+            "source_export_kind": metadata.get("source_export_kind"),
+            "source_memory_type": metadata.get("source_memory_type"),
+            "source_created_time": metadata.get("source_created_time"),
+            "source_modified_time": metadata.get("source_modified_time"),
+            "source_tags": metadata.get("source_tags") or [],
+            "source_resources": metadata.get("source_resources") or [],
+        }
+
+    def _serialize_documents_for_api(
+        self, documents: List[Document], include_l0: bool = False
+    ) -> List[Dict]:
+        """Serialize document models with hosted-export metadata for API clients."""
+        metadata_map = self._get_memory_metadata_map(
+            [doc.id for doc in documents if doc.id is not None]
+        )
+
+        documents_for_api = []
+        for doc in documents:
+            doc_dict = doc.to_dict()
+            doc_dict.update(self._build_source_metadata_fields(metadata_map.get(doc.id)))
+
+            if include_l0:
+                try:
+                    doc_dict["l0_data"] = self.get_document_l0(doc.id)
+                    logger.info(f"success getting L0 data for document {doc.id} success")
+                except Exception as e:
+                    logger.error(f"Error getting L0 data for document {doc.id}: {str(e)}")
+                    doc_dict["l0_data"] = None
+
+            documents_for_api.append(doc_dict)
+
+        return documents_for_api
+
+    def list_documents_for_api(self, include_l0: bool = False) -> List[Dict]:
+        """List documents enriched with hosted-export metadata for UI/API clients."""
+        documents = self.list_documents()
+        return self._serialize_documents_for_api(documents, include_l0=include_l0)
+
+    def get_documents_for_api(
+        self, document_ids: List[int], include_l0: bool = False
+    ) -> List[Dict]:
+        """Return a specific set of documents enriched for UI/API clients."""
+        if not document_ids:
+            return []
+
+        normalized_ids = []
+        for doc_id in document_ids:
+            try:
+                normalized_ids.append(int(doc_id))
+            except (TypeError, ValueError):
+                logger.warning(f"Skipping invalid document id for API lookup: {doc_id}")
+
+        normalized_ids = list(dict.fromkeys(normalized_ids))
+        if not normalized_ids:
+            return []
+
+        documents: List[Document] = []
+        for doc_id in normalized_ids:
+            document_dto = self.get_document_by_id(doc_id)
+            if not document_dto:
+                continue
+            documents.append(Document.from_dto(document_dto))
+
+        return self._serialize_documents_for_api(documents, include_l0=include_l0)
+
     def scan_directory(
         self, directory_path: str, recursive: bool = False
     ) -> List[DocumentDTO]:
@@ -350,23 +453,8 @@ class DocumentService:
         Returns:
             List[Dict]: list of dict of docs with L0 data
         """
-        # 1. get all basic data
-        documents = self.list_documents()
-        logger.info(f"list_documents len: {len(documents)}")
-
-        # 2. each doc L0
-        documents_with_l0 = []
-        for doc in documents:
-            doc_dict = doc.to_dict()
-            try:
-                l0_data = self.get_document_l0(doc.id)
-                doc_dict["l0_data"] = l0_data
-                logger.info(f"success getting L0 data for document {doc.id} success")
-            except Exception as e:
-                logger.error(f"Error getting L0 data for document {doc.id}: {str(e)}")
-                doc_dict["l0_data"] = None
-            documents_with_l0.append(doc_dict)
-
+        documents_with_l0 = self.list_documents_for_api(include_l0=True)
+        logger.info(f"list_documents_with_l0 len: {len(documents_with_l0)}")
         return documents_with_l0
 
     def get_document_by_id(self, document_id: int) -> Optional[Document]:

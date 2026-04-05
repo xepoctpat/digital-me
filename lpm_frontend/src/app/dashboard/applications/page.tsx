@@ -2,12 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { useMemo, useState } from 'react';
-import { Modal } from 'antd';
-import RegisterUploadModal from '@/components/upload/RegisterUploadModal';
+import { message } from 'antd';
 import { ROUTER_PATH } from '@/utils/router';
-import { useLoadInfoStore } from '@/store/useLoadInfoStore';
-import { EVENT } from '@/utils/event';
+import { PRIVATE_MODE_MESSAGE, PUBLIC_NETWORK_ENABLED } from '@/utils/networkMode';
 
 interface ApplicationCard {
   title: string;
@@ -15,6 +12,7 @@ interface ApplicationCard {
   description: string;
   image: string;
   route: string;
+  requiresPublicNetwork?: boolean;
 }
 
 const applications: ApplicationCard[] = [
@@ -37,7 +35,8 @@ const applications: ApplicationCard[] = [
     description:
       'Create spaces where multiple Second Mes work together to complete shared missions.',
     image: '/images/app_secondme_network.png',
-    route: ROUTER_PATH.APPLICATIONS_NETWORK
+    route: ROUTER_PATH.APPLICATIONS_NETWORK,
+    requiresPublicNetwork: true
   },
   {
     title: 'Second X Apps',
@@ -58,10 +57,6 @@ const applications: ApplicationCard[] = [
 
 export default function ApplicationsPage() {
   const router = useRouter();
-  const loadInfo = useLoadInfoStore((state) => state.loadInfo);
-  const isRegistered = useMemo(() => {
-    return loadInfo?.status === 'online';
-  }, [loadInfo]);
 
   return (
     <div className="h-full w-full flex flex-col p-4 pt-12">
@@ -82,11 +77,15 @@ export default function ApplicationsPage() {
               className={`rounded-2xl overflow-hidden border-2 border-gray-800/10 hover:border-gray-800/20 
                       transition-all cursor-pointer bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)] 
                       hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.08)] hover:-translate-y-0.5
-                      ${!app.route && 'opacity-90 cursor-not-allowed'}`}
+                      ${(!app.route || (app.requiresPublicNetwork && !PUBLIC_NETWORK_ENABLED)) && 'opacity-90'}`}
               onClick={() => {
-                if (!isRegistered) {
-                  dispatchEvent(new Event(EVENT.SHOW_REGISTER_MODAL));
-                } else if (app.route) {
+                if (app.requiresPublicNetwork && !PUBLIC_NETWORK_ENABLED) {
+                  message.info(PRIVATE_MODE_MESSAGE);
+
+                  return;
+                }
+
+                if (app.route) {
                   router.push(app.route);
                 }
               }}

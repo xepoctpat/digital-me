@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface TrainingLogProps {
   trainingDetails: {
@@ -11,10 +11,9 @@ const TrainingLog: React.FC<TrainingLogProps> = ({ trainingDetails }: TrainingLo
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const userScrollTimeout = useRef<NodeJS.Timeout | null>(null);
-  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 
   // Smooth scroll console to bottom
-  const smoothScrollConsole = () => {
+  const smoothScrollConsole = useCallback(() => {
     if (consoleEndRef.current && !isUserScrolling) {
       const consoleContainer = consoleEndRef.current;
 
@@ -25,21 +24,23 @@ const TrainingLog: React.FC<TrainingLogProps> = ({ trainingDetails }: TrainingLo
         });
       }
     }
-  };
+  }, [isUserScrolling]);
 
   useEffect(() => {
     // Set up scroll event listener to detect user scrolling
     const handleUserScroll = () => {
       if (!consoleEndRef.current) return;
-      
+
       const consoleContainer = consoleEndRef.current.closest('.overflow-y-auto');
-      
+
       if (!(consoleContainer instanceof HTMLElement)) return;
-      
+
       // Check if scrolled away from bottom
-      const isScrolledToBottom = 
-        Math.abs((consoleContainer.scrollHeight - consoleContainer.scrollTop) - consoleContainer.clientHeight) < 50;
-      
+      const isScrolledToBottom =
+        Math.abs(
+          consoleContainer.scrollHeight - consoleContainer.scrollTop - consoleContainer.clientHeight
+        ) < 50;
+
       // If scrolled away from bottom, consider it manual scrolling
       if (!isScrolledToBottom) {
         setIsUserScrolling(true);
@@ -56,6 +57,7 @@ const TrainingLog: React.FC<TrainingLogProps> = ({ trainingDetails }: TrainingLo
       } else {
         // If at bottom, not considered manual scrolling
         setIsUserScrolling(false);
+
         if (userScrollTimeout.current) {
           clearTimeout(userScrollTimeout.current);
           userScrollTimeout.current = null;
@@ -71,6 +73,7 @@ const TrainingLog: React.FC<TrainingLogProps> = ({ trainingDetails }: TrainingLo
         consoleContainer.addEventListener('scroll', handleUserScroll);
 
         // Cleanup function
+
         return () => {
           consoleContainer.removeEventListener('scroll', handleUserScroll);
 
@@ -86,16 +89,7 @@ const TrainingLog: React.FC<TrainingLogProps> = ({ trainingDetails }: TrainingLo
     if (trainingDetails.length > 0) {
       smoothScrollConsole();
     }
-  }, [trainingDetails, isAutoScrollEnabled]);
-
-  const toggleAutoScroll = () => {
-    setIsAutoScrollEnabled(!isAutoScrollEnabled);
-    if (!isAutoScrollEnabled) {
-      // If we're re-enabling auto-scroll, scroll to bottom immediately
-      setIsUserScrolling(false);
-      setTimeout(smoothScrollConsole, 50);
-    }
-  };
+  }, [smoothScrollConsole, trainingDetails]);
 
   return (
     <div className="mt-4">

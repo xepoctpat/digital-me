@@ -8,13 +8,15 @@ import {
   CheckCircleOutlined,
   PlayCircleOutlined,
   PauseCircleOutlined,
-  LoadingOutlined
+  LoadingOutlined,
+  LockOutlined
 } from '@ant-design/icons';
 import RegisterUploadModal from '../upload/RegisterUploadModal';
 
 import { useLoadInfoStore } from '@/store/useLoadInfoStore';
 import TrainingTipModal from '../upload/TraingTipModal';
 import { getMemoryList } from '@/service/memory';
+import { PUBLIC_NETWORK_ENABLED } from '@/utils/networkMode';
 
 const StatusDot = ({ active }: { active: boolean }) => (
   <div
@@ -238,25 +240,31 @@ export function ModelStatus() {
           </div>
 
           <div className="w-px h-4 bg-gray-200" />
-
-          <div
-            className="flex items-center whitespace-nowrap space-x-1.5 text-sm text-gray-600 hover:text-blue-600 cursor-pointer transition-all hover:-translate-y-0.5 mr-2"
-            onClick={handleRegistryClick}
-          >
-            {isRegistered ? (
-              <>
-                <StatusDot active={true} />
-                <CheckCircleOutlined className="text-lg" />
-                <span>Join AI Network</span>
-              </>
-            ) : (
-              <>
-                <StatusDot active={false} />
-                <CloudUploadOutlined className="text-lg" />
-                <span>Join AI Network</span>
-              </>
-            )}
-          </div>
+          {PUBLIC_NETWORK_ENABLED ? (
+            <div
+              className="flex items-center whitespace-nowrap space-x-1.5 text-sm text-gray-600 hover:text-blue-600 cursor-pointer transition-all hover:-translate-y-0.5 mr-2"
+              onClick={handleRegistryClick}
+            >
+              {isRegistered ? (
+                <>
+                  <StatusDot active={true} />
+                  <CheckCircleOutlined className="text-lg" />
+                  <span>Join AI Network</span>
+                </>
+              ) : (
+                <>
+                  <StatusDot active={false} />
+                  <CloudUploadOutlined className="text-lg" />
+                  <span>Join AI Network</span>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center whitespace-nowrap space-x-1.5 text-sm text-gray-500 mr-2">
+              <LockOutlined className="text-lg" />
+              <span>Private Mode</span>
+            </div>
+          )}
         </div>
       </div>
 

@@ -17,6 +17,33 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+@memories_bp.route("/api/memories/file/preview", methods=["POST"])
+def preview_upload_file():
+    """Preview one or more uploads without persisting them."""
+    try:
+        logger.info("Starting to process file preview request")
+
+        files = request.files.getlist("files") if request.files else []
+        if not files and "file" in request.files:
+            files = [request.files["file"]]
+
+        if not files:
+            logger.warning("No file in preview request")
+            return APIResponse.error(message="No file was uploaded for preview", code=400)
+
+        metadata = request.form.to_dict() if request.form else None
+        preview_result = storage_service.preview_uploaded_files(files, metadata)
+
+        logger.info(
+            f"Preview generated for {preview_result['summary']['total_files']} file(s)"
+        )
+        return APIResponse.success(data=preview_result, message="Preview generated")
+
+    except Exception as e:
+        logger.error(f"Error generating upload preview: {str(e)}", exc_info=True)
+        return APIResponse.error(message=f"Internal server error: {str(e)}", code=500)
+
+
 @memories_bp.route("/api/memories/file", methods=["POST"])
 def upload_file():
     """

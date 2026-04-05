@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Modal, Form, Input, Button, Select, Spin } from 'antd';
 import { useUploadStore } from '@/store/useUploadStore';
+import { getPublicPortalUrl } from '@/utils/networkMode';
 
 const { Option } = Select;
 
@@ -31,7 +32,7 @@ export default function AddParticipantModal({ open, onClose, onAdd }: AddPartici
 
   const handleSecondMeSelect = (value: string) => {
     const [secondMeName, instanceId] = value.split('|');
-    const url = `https://app.secondme.io/${secondMeName}/${instanceId}`;
+    const url = getPublicPortalUrl(secondMeName, instanceId);
 
     form.setFieldsValue({ portalUrl: url });
     setShowSelectModal(false);

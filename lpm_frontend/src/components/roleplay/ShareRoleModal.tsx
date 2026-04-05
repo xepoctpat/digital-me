@@ -4,6 +4,7 @@ import { useLoadInfoStore } from '@/store/useLoadInfoStore';
 import { copyToClipboard } from '@/utils/copy';
 import { Modal, message } from 'antd';
 import { useEffect, useState } from 'react';
+import { PRIVATE_MODE_MESSAGE, PUBLIC_NETWORK_ENABLED, getPublicAppUrl } from '@/utils/networkMode';
 
 interface ShareRoleModalProps {
   open: boolean;
@@ -17,6 +18,12 @@ export default function ShareRoleModal({ open, onClose, uuid, isRegistered }: Sh
   const loadInfo = useLoadInfoStore((state) => state.loadInfo);
 
   useEffect(() => {
+    if (!PUBLIC_NETWORK_ENABLED) {
+      setShareUrl('');
+
+      return;
+    }
+
     if (isRegistered) {
       if (!loadInfo) {
         message.error('Oops, something went wrong');
@@ -25,7 +32,7 @@ export default function ShareRoleModal({ open, onClose, uuid, isRegistered }: Sh
       }
 
       // TODO Later replace with IP address returned from backend
-      setShareUrl(`https://app.secondme.io/role/${loadInfo.name}/${loadInfo.instance_id}/${uuid}`);
+      setShareUrl(getPublicAppUrl(`/role/${loadInfo.name}/${loadInfo.instance_id}/${uuid}`));
     }
   }, [isRegistered, uuid, loadInfo]);
 
@@ -45,7 +52,9 @@ export default function ShareRoleModal({ open, onClose, uuid, isRegistered }: Sh
 
   return (
     <Modal centered footer={null} onCancel={onClose} open={open} title="Share">
-      {isRegistered ? (
+      {!PUBLIC_NETWORK_ENABLED ? (
+        <div className="text-center text-gray-600">{PRIVATE_MODE_MESSAGE}</div>
+      ) : isRegistered ? (
         <div className="space-y-4">
           <input
             className="w-full px-3 py-2 border rounded-lg bg-gray-50"

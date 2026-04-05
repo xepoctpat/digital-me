@@ -13,7 +13,8 @@ RUN npm install
 COPY lpm_frontend/ /app/
 
 # Set environment variable for backend URL (can be overridden in docker-compose)
-ENV DOCKER_API_BASE_URL=http://backend:8002
+ENV DOCKER_API_BASE_URL=http://backend:8002 \
+	NEXT_TELEMETRY_DISABLED=1
 
 # Create logs directory
 RUN mkdir -p /app/logs

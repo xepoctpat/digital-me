@@ -1,11 +1,11 @@
 from typing import List, Tuple
-import chromadb
 from chromadb.utils import embedding_functions
 import os
 from .dto.chunk_dto import ChunkDTO
 from lpm_kernel.common.llm import LLMClient
 from lpm_kernel.file_data.document_dto import DocumentDTO
 from typing import List, Dict, Optional
+from lpm_kernel.file_data.chroma_utils import create_persistent_chroma_client
 from lpm_kernel.configs.logging import get_train_process_logger
 logger = get_train_process_logger()
 
@@ -16,7 +16,7 @@ class EmbeddingService:
         from lpm_kernel.api.services.user_llm_config_service import UserLLMConfigService
         
         chroma_path = os.getenv("CHROMA_PERSIST_DIRECTORY", "./data/chroma_db")
-        self.client = chromadb.PersistentClient(path=chroma_path)
+        self.client = create_persistent_chroma_client(chroma_path)
         self.llm_client = LLMClient()
         
         # Get embedding model dimension from user config

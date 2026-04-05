@@ -52,6 +52,9 @@ services:
       - ./resources:/app/resources
     environment:
       - VITE_API_BASE_URL=http://backend:8002
+      - LOCAL_APP_PORT=8002
+      - ENABLE_PUBLIC_NETWORK=${ENABLE_PUBLIC_NETWORK:-false}
+      - PUBLIC_APP_BASE_URL=${PUBLIC_APP_BASE_URL:-https://app.secondme.io}
     depends_on:
       - backend
     deploy:

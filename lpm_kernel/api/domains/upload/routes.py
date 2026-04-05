@@ -14,16 +14,66 @@ from lpm_kernel.api.domains.loads.dto import LoadDTO
 from lpm_kernel.api.domains.trainprocess.training_params_manager import TrainingParamsManager
 from lpm_kernel.file_data.document_service import document_service
 from lpm_kernel.api.domains.upload.TrainingTags import TrainingTags
+from lpm_kernel.api.common.feature_flags import (
+    is_public_network_enabled,
+    public_network_disabled_message,
+)
 
 upload_bp = Blueprint("upload", __name__)
 registry_client = RegistryClient()
 
 logger = logging.getLogger(__name__)
 
+
+def _local_only_upload_status() -> dict:
+    try:
+        current_load, error, status_code = LoadService.get_current_load()
+        if error:
+            return {
+                "upload_name": None,
+                "instance_id": None,
+                "description": None,
+                "email": None,
+                "status": "unregistered",
+                "last_heartbeat": None,
+                "is_connected": False,
+                "last_ws_check": None,
+            }
+
+        return {
+            "upload_name": current_load.name,
+            "instance_id": current_load.instance_id,
+            "description": current_load.description,
+            "email": current_load.email,
+            "status": "unregistered",
+            "last_heartbeat": None,
+            "is_connected": False,
+            "last_ws_check": None,
+        }
+    except Exception:
+        return {
+            "upload_name": None,
+            "instance_id": None,
+            "description": None,
+            "email": None,
+            "status": "unregistered",
+            "last_heartbeat": None,
+            "is_connected": False,
+            "last_ws_check": None,
+        }
+
 @upload_bp.route("/api/upload/register", methods=["POST"])
 def register_upload():
     """Register upload instance"""
     try:
+        if not is_public_network_enabled():
+            return jsonify(
+                APIResponse.error(
+                    code=403,
+                    message=public_network_disabled_message("Public upload registration"),
+                )
+            ), 403
+
         current_load, error, status_code = LoadService.get_current_load()
         
         upload_name = current_load.name
@@ -83,6 +133,14 @@ async def connect_upload():
     """
     
     try:
+        if not is_public_network_enabled():
+            return jsonify(
+                APIResponse.error(
+                    code=403,
+                    message=public_network_disabled_message("Public upload connection"),
+                )
+            ), 403
+
         logger.info("Starting WebSocket connection process...")
         current_load, error, status_code = LoadService.get_current_load(with_password=True)
         if error:
@@ -145,6 +203,8 @@ def get_upload_status():
     }
     """
     try:
+        if not is_public_network_enabled():
+            return jsonify(APIResponse.success(data=_local_only_upload_status()))
 
         current_load, error, status_code = LoadService.get_current_load()
         if error:
@@ -217,6 +277,14 @@ def unregister_upload():
     }
     """
     try:
+        if not is_public_network_enabled():
+            return jsonify(
+                APIResponse.error(
+                    code=403,
+                    message=public_network_disabled_message("Public upload unregistration"),
+                )
+            ), 403
+
         current_load, error, status_code = LoadService.get_current_load()
         instance_id = current_load.instance_id
         registry_client.unregister_upload(instance_id)
@@ -264,6 +332,21 @@ def list_uploads():
         page_no = request.args.get("page_no", 1, type=int)
         page_size = request.args.get("page_size", 10, type=int)
         status = request.args.getlist("status")
+
+        if not is_public_network_enabled():
+            return jsonify(
+                APIResponse.success(
+                    data={
+                        "items": [],
+                        "pagination": {
+                            "page_no": page_no,
+                            "page_size": page_size,
+                            "total": 0,
+                            "total_pages": 0,
+                        },
+                    },
+                )
+            )
         
         result = registry_client.list_uploads(
             page_no=page_no,
@@ -298,6 +381,9 @@ def count_uploads():
     }
     """
     try:
+        if not is_public_network_enabled():
+            return jsonify(APIResponse.success(data={"count": 0}))
+
         result = registry_client.count_uploads()
         
         return jsonify(APIResponse.success(
@@ -341,6 +427,14 @@ def update_upload():
     }
     """
     try:
+        if not is_public_network_enabled():
+            return jsonify(
+                APIResponse.error(
+                    code=403,
+                    message=public_network_disabled_message("Public upload updates"),
+                )
+            ), 403
+
         current_load, error, status_code = LoadService.get_current_load()
         instance_id = current_load.instance_id
         

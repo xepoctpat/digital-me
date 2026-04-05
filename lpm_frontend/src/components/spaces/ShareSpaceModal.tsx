@@ -3,6 +3,7 @@
 import { copyToClipboard } from '@/utils/copy';
 import { Modal, message } from 'antd';
 import { useEffect, useState } from 'react';
+import { PRIVATE_MODE_MESSAGE, PUBLIC_NETWORK_ENABLED, getPublicAppUrl } from '@/utils/networkMode';
 
 interface ShareSpaceModalProps {
   open: boolean;
@@ -21,12 +22,18 @@ export default function ShareSpaceModal({
   const [shareUrl, setShareUrl] = useState('');
 
   useEffect(() => {
+    if (!PUBLIC_NETWORK_ENABLED) {
+      setShareUrl('');
+
+      return;
+    }
+
     if (isRegistered) {
       const secondMe = JSON.parse(localStorage.getItem('registeredUpload') || '{}');
 
       // TODO Later replace with IP address returned from backend
       setShareUrl(
-        `https://app.secondme.io/space/${secondMe.upload_name}/${secondMe.instance_id}/${space_id}`
+        getPublicAppUrl(`/space/${secondMe.upload_name}/${secondMe.instance_id}/${space_id}`)
       );
     }
   }, [isRegistered, space_id]);
@@ -49,7 +56,9 @@ export default function ShareSpaceModal({
     <>
       {contextHolder}
       <Modal centered footer={null} onCancel={onClose} open={open} title="Share Space">
-        {isRegistered ? (
+        {!PUBLIC_NETWORK_ENABLED ? (
+          <div className="text-center text-gray-600">{PRIVATE_MODE_MESSAGE}</div>
+        ) : isRegistered ? (
           <div className="space-y-4">
             <input
               className="w-full px-3 py-2 border rounded-lg bg-gray-50"

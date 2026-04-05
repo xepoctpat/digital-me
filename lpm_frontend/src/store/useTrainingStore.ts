@@ -1,11 +1,5 @@
 import { create } from 'zustand';
-import {
-  getServiceStatus,
-  getTrainProgress,
-  type TrainProgress,
-  type ServiceStatusRes
-} from '@/service/train';
-import type { CommonResponse } from '@/types/responseModal';
+import { getServiceStatus, getTrainProgress, type TrainProgress } from '@/service/train';
 
 export type ModelStatus = 'seed_identity' | 'memory_upload' | 'training' | 'trained';
 
@@ -35,7 +29,7 @@ interface ModelState {
   setStatus: (status: ModelStatus) => void;
   setError: (error: boolean) => void;
   setIsTraining: (isTraining: boolean) => void;
-  fetchServiceStatus: () => Promise<CommonResponse<ServiceStatusRes>>;
+  fetchServiceStatus: () => ReturnType<typeof getServiceStatus>;
   setServiceStarting: (isStarting: boolean) => void;
   setServiceStopping: (isStopping: boolean) => void;
   setTrainingProgress: (progress: TrainProgress) => void;

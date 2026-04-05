@@ -52,8 +52,6 @@ Launch your AI self from your laptop onto our decentralized network—anyone or 
 ### 100% **Privacy and Control**
 Unlike traditional centralized AI systems, Second Me ensures that your information and intelligence remain local and completely private.
 
-
-
 ## Getting started & staying tuned with us
 Star and join us, and you will receive all release notifications from GitHub without any delay!
 
@@ -93,6 +91,8 @@ make docker-up
 
 👉 For detailed instructions — including integrated (non-Docker) setup, model selection, memory requirements, and platform-specific tips,
 check the full [Deployment Guide on GitBook](https://secondme.gitbook.io/secondme/guides/deployment).
+
+🧭 For a private, local-first workflow — including Windows-friendly local startup and importing exported memory materials from the hosted app into your local instance — see [Importing Hosted Memories into Local Second Me](docs/Importing%20Hosted%20Memories%20into%20Local%20Second%20Me.md).
 
 ❓ Got questions about setup, models, or any troubleshooting? [Check our FAQ](https://secondme.gitbook.io/secondme/faq).
 

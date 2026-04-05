@@ -415,6 +415,7 @@ class ShadeInfo:
         contentSecondView: str = "",
         timelines: List[Dict[str, Any]] = [],
         confidenceLevel: str = None,
+        clusterInfo: Optional[Dict[str, Any]] = None,
     ):
         self.id = id
         self.name = name
@@ -430,6 +431,7 @@ class ShadeInfo:
             self.confidence_level = None
 
         self.timelines = [ShadeTimeline(**timeline) for timeline in timelines]
+        self.cluster_info = clusterInfo or {}
 
     def imporve_shade_info(
         self,
@@ -492,6 +494,7 @@ class ShadeInfo:
             "contentSecondView": self.content_second_view,
             "confidenceLevel": self.confidence_level if self.confidence_level else None,
             "timelines": [timeline.to_json() for timeline in self.timelines],
+            "clusterInfo": self.cluster_info,
         }
 
 

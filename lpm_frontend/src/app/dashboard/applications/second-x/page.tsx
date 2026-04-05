@@ -1,23 +1,17 @@
 'use client';
 
-import { useLoadInfoStore } from '@/store/useLoadInfoStore';
-import { EVENT } from '@/utils/event';
-import { useEffect, useMemo } from 'react';
+import { PRIVATE_MODE_MESSAGE, PUBLIC_NETWORK_ENABLED } from '@/utils/networkMode';
 
 export default function NativeApplications() {
-  const loadInfo = useLoadInfoStore((state) => state.loadInfo);
-  const isRegistered = useMemo(() => {
-    return loadInfo?.status === 'online';
-  }, [loadInfo]);
-
-  useEffect(() => {
-    if (!isRegistered) {
-      dispatchEvent(new Event(EVENT.SHOW_REGISTER_MODAL));
-    }
-  }, [isRegistered]);
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 bg-secondme-warm-bg rounded-xl">
+      {!PUBLIC_NETWORK_ENABLED && (
+        <div className="mb-6 rounded-lg border border-blue-100 bg-blue-50 p-4 text-blue-700">
+          <div className="font-medium mb-1">Private Mode</div>
+          <div className="text-sm">{PRIVATE_MODE_MESSAGE}</div>
+        </div>
+      )}
+
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Second X Apps</h1>
         <p className="mt-2 text-sm text-gray-600">

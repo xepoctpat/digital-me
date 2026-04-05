@@ -17,7 +17,7 @@ import {
 } from '@/service/role';
 import { message } from 'antd';
 import { useLoadInfoStore } from '@/store/useLoadInfoStore';
-import { EVENT } from '@/utils/event';
+import { PRIVATE_MODE_MESSAGE, PUBLIC_NETWORK_ENABLED } from '@/utils/networkMode';
 
 export default function Roleplay() {
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -45,12 +45,6 @@ export default function Roleplay() {
   }, [loadInfo]);
 
   const [messageApi, contextHolder] = message.useMessage();
-
-  useEffect(() => {
-    if (!isRegistered) {
-      dispatchEvent(new Event(EVENT.SHOW_REGISTER_MODAL));
-    }
-  }, [isRegistered]);
 
   // Load role list
   const loadRoles = async () => {
@@ -96,8 +90,14 @@ export default function Roleplay() {
   };
 
   const handleShareRole = (role: RoleRes) => {
+    if (!PUBLIC_NETWORK_ENABLED) {
+      messageApi.info(PRIVATE_MODE_MESSAGE);
+
+      return;
+    }
+
     if (!isRegistered) {
-      messageApi.error('Please join AI network first');
+      messageApi.error('Enable public network and join AI network first');
 
       return;
     }

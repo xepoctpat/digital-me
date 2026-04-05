@@ -7,6 +7,7 @@ import { PlayIcon, StopIcon } from '@heroicons/react/24/outline';
 import { EVENT } from '../../utils/event';
 import { Checkbox, InputNumber, message, Radio, Spin, Tooltip } from 'antd';
 import type { TrainingConfig } from '@/service/train';
+import type { IModelConfig } from '@/service/modelConfig';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import OpenAiModelIcon from '../svgs/OpenAiModelIcon';
 import CustomModelIcon from '../svgs/CustomModelIcon';
@@ -21,20 +22,15 @@ interface BaseModelOption {
   label: string;
 }
 
-interface ModelConfig {
-  provider_type?: string;
-  [key: string]: any;
-}
-
 interface TrainingConfigurationProps {
   baseModelOptions: BaseModelOption[];
-  modelConfig: ModelConfig | null;
+  modelConfig: IModelConfig | null;
   isTraining: boolean;
   updateTrainingParams: (params: TrainingConfig) => void;
   status: string;
   trainSuspended: boolean;
-  handleResetProgress: () => void;
-  handleTrainingAction: () => Promise<void>;
+  onResetProgress: () => void;
+  onTrainingAction: () => Promise<void>;
   trainActionLoading: boolean;
   setSelectedInfo: React.Dispatch<React.SetStateAction<boolean>>;
   trainingParams: TrainingConfig;
@@ -54,10 +50,10 @@ const TrainingConfiguration: React.FC<TrainingConfigurationProps> = ({
   updateTrainingParams,
   trainingParams,
   status,
-  handleResetProgress,
+  onResetProgress,
   trainSuspended,
   trainActionLoading,
-  handleTrainingAction,
+  onTrainingAction,
   setSelectedInfo,
   cudaAvailable
 }) => {
@@ -98,6 +94,12 @@ const TrainingConfiguration: React.FC<TrainingConfigurationProps> = ({
       <PlayIcon className="h-5 w-5 mr-2" />
     );
   }, [isTraining, trainActionLoading]);
+
+  const handleResetButtonClick = onResetProgress;
+  const handleTrainingButtonClick = onTrainingAction;
+  const handleThinkingModelModalClose = () => {
+    setOpenThinkingModel(false);
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
@@ -477,7 +479,7 @@ const TrainingConfiguration: React.FC<TrainingConfigurationProps> = ({
           {trainButtonText === 'Resume Training' && (
             <button
               className={`inline-flex items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 border border-transparent text-sm font-medium rounded-md shadow-sm text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
-              onClick={() => handleResetProgress()}
+              onClick={handleResetButtonClick}
             >
               <StopIcon className="h-5 w-5 mr-2" />
               Reset Training
@@ -488,7 +490,7 @@ const TrainingConfiguration: React.FC<TrainingConfigurationProps> = ({
             ${!isTraining && !modelConfig?.provider_type ? 'bg-gray-300 hover:bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}
             focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
             disabled={!isTraining && !modelConfig?.provider_type}
-            onClick={handleTrainingAction}
+            onClick={handleTrainingButtonClick}
           >
             {trainButtonIcon}
             {trainButtonText}
@@ -496,7 +498,7 @@ const TrainingConfiguration: React.FC<TrainingConfigurationProps> = ({
         </div>
       </div>
 
-      <ThinkingModelModal onClose={() => setOpenThinkingModel(false)} open={openThinkingModel} />
+      <ThinkingModelModal onClose={handleThinkingModelModalClose} open={openThinkingModel} />
     </div>
   );
 };

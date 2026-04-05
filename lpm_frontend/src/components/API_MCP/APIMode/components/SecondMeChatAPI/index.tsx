@@ -5,6 +5,11 @@ import { CheckCircleFilled, CopyOutlined } from '@ant-design/icons';
 import { useState, useMemo } from 'react';
 import { useLoadInfoStore } from '@/store/useLoadInfoStore';
 import { copyToClipboard } from '@/utils/copy';
+import {
+  PUBLIC_NETWORK_ENABLED,
+  getLocalChatApiUrl,
+  getPublicChatApiUrl
+} from '@/utils/networkMode';
 
 const SecondMeChatAPI = () => {
   const [copied, setCopied] = useState(false);
@@ -13,8 +18,16 @@ const SecondMeChatAPI = () => {
     return loadInfo?.status === 'online';
   }, [loadInfo]);
   const endpoint = useMemo(() => {
-    return `https://app.secondme.io/api/chat/${loadInfo?.instance_id || 'instance_id'}/chat/completions`;
+    return PUBLIC_NETWORK_ENABLED
+      ? getPublicChatApiUrl(loadInfo?.instance_id)
+      : getLocalChatApiUrl();
   }, [loadInfo?.instance_id]);
+
+  const referenceUrl = useMemo(() => {
+    return PUBLIC_NETWORK_ENABLED
+      ? 'https://github.com/mindverse/Second-Me/blob/master/docs/Public%20Chat%20API.md'
+      : 'https://github.com/mindverse/Second-Me/blob/master/docs/Local%20Chat%20API.md';
+  }, []);
 
   const handleCopyEndpoint = () => {
     copyToClipboard(endpoint)
@@ -36,11 +49,17 @@ const SecondMeChatAPI = () => {
             <div className="font-extrabold text-xl">Second Me Chat API</div>
           </div>
           <div className="flex items-center">
-            <Badge status={isRegistered ? 'success' : 'error'} />
-            {isRegistered ? (
-              <div className="ml-2 text-[#5EC268] font-medium">IN SERVICE</div>
+            <Badge
+              status={PUBLIC_NETWORK_ENABLED ? (isRegistered ? 'success' : 'error') : 'processing'}
+            />
+            {PUBLIC_NETWORK_ENABLED ? (
+              isRegistered ? (
+                <div className="ml-2 text-[#5EC268] font-medium">PUBLIC MODE</div>
+              ) : (
+                <div className="ml-2 text-[#ff4d4f] font-medium">NOT IN SERVICE</div>
+              )
             ) : (
-              <div className="ml-2 text-[#ff4d4f] font-medium">NOT IN SERVICE</div>
+              <div className="ml-2 text-[#1677ff] font-medium">LOCAL MODE</div>
             )}
           </div>
         </div>
@@ -70,14 +89,11 @@ const SecondMeChatAPI = () => {
             className="min-w-[160px] flex items-center justify-center"
             icon={<span className="mr-2">📄</span>}
             onClick={() => {
-              window.open(
-                'https://github.com/mindverse/Second-Me/blob/master/docs/Public%20Chat%20API.md',
-                '_blank'
-              );
+              window.open(referenceUrl, '_blank');
             }}
             size="large"
           >
-            API Reference
+            {PUBLIC_NETWORK_ENABLED ? 'Public API Reference' : 'Local API Reference'}
           </Button>
         </div>
       </div>
@@ -85,8 +101,9 @@ const SecondMeChatAPI = () => {
       <div className="bg-[#FEFCFB] flex flex-col border border-solid border-gray-200 rounded-md shadow-sm p-4 gap-4">
         <div className="text-lg font-medium">Second Me Chat API Documentation</div>
         <div className="text-sm">
-          This API is used to create chat completions, process provided messages, and generate
-          responses. The API supports streaming responses and is compatible with OpenAI format.
+          {PUBLIC_NETWORK_ENABLED
+            ? 'This public API is used to create chat completions, process provided messages, and generate responses for your published Second Me. The API supports streaming responses and is compatible with OpenAI format.'
+            : 'This local API lets you inspect and test your own Second Me privately on your machine before you enable any public network exposure.'}
         </div>
       </div>
     </div>

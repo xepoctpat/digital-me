@@ -1,9 +1,8 @@
-import chromadb
-from chromadb.config import Settings
 from chromadb.errors import IDAlreadyExistsError
 from typing import List, Dict, Optional
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from lpm_kernel.file_data.chroma_utils import create_persistent_chroma_client
 
 
 @dataclass
@@ -26,7 +25,7 @@ class BaseVectorRepository(ABC):
 
 class ChromaRepository(BaseVectorRepository):
     def __init__(self, collection_name: str, persist_directory: str = "./chroma_db"):
-        self.client = chromadb.PersistentClient(path=persist_directory)
+        self.client = create_persistent_chroma_client(persist_directory)
 
         # Check if collection exists, create it if it doesn't
         try:

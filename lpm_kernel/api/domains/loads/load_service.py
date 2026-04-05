@@ -360,14 +360,14 @@ class LoadService:
     def _clear_vector_database() -> None:
         """Clear ChromaDB vector database collections"""
         try:
-            import chromadb
             import os
+            from lpm_kernel.file_data.chroma_utils import create_persistent_chroma_client
             
             # Get ChromaDB path
             chroma_path = os.getenv("CHROMA_PERSIST_DIRECTORY", "./data/chroma_db")
             
             # Create ChromaDB client
-            client = chromadb.PersistentClient(path=chroma_path)
+            client = create_persistent_chroma_client(chroma_path)
             
             # Get document-level collection and clear content
             try:

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getUploadList, type IUploadInfo } from '@/service/upload';
+import { PUBLIC_NETWORK_ENABLED } from '@/utils/networkMode';
 
 interface UploadState {
   uploads: IUploadInfo[];
@@ -18,6 +19,17 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   total: 0,
   loading: false,
   fetchUploadList: (refresh = true) => {
+    if (!PUBLIC_NETWORK_ENABLED) {
+      set({
+        uploads: [],
+        total: 0,
+        loading: false,
+        paginationRef: { current: { page_no: 1, page_size: 8 } }
+      });
+
+      return Promise.resolve();
+    }
+
     set({ loading: true });
 
     if (refresh) {
@@ -33,17 +45,17 @@ export const useUploadStore = create<UploadState>((set, get) => ({
       .then((res) => {
         if (res.data.code === 0) {
           const _data = res.data.data;
+          const uploadItems = _data.items;
 
           if (refresh) {
             set({
-              uploads: _data.items || [],
+              uploads: uploadItems,
               total: _data.pagination.total
             });
           } else {
-            const _list = get().uploads;
-            const _newList = _data.items || [];
+            const _list = [...get().uploads];
 
-            _newList.forEach((item) => {
+            uploadItems.forEach((item) => {
               const index = _list.findIndex((oldItem) => oldItem.instance_id === item.instance_id);
 
               if (index !== -1) {

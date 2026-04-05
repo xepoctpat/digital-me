@@ -49,6 +49,8 @@ class L1Shade(Base):
     content_third_view = Column(String(2000))
     desc_second_view = Column(String(1000))
     content_second_view = Column(String(2000))
+    timelines = Column(JSON)
+    cluster_info = Column(JSON)
     create_time = Column(DateTime, nullable=False, default=datetime.now)
 
     # add relationship

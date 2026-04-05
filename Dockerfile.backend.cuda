@@ -7,7 +7,7 @@ WORKDIR /app
 ARG SKIP_LLAMA_BUILD=false
 
 # Install system dependencies with noninteractive mode to avoid prompts
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     build-essential cmake git curl wget lsof vim unzip sqlite3 \
     python3-pip python3-venv python3-full python3-poetry pipx \
     && apt-get clean \
@@ -16,13 +16,18 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
 
 # Create a virtual environment to avoid PEP 668 restrictions
 RUN python -m venv /app/venv
-ENV PATH="/app/venv/bin:$PATH"
-ENV VIRTUAL_ENV="/app/venv"
+ENV PATH="/app/venv/bin:$PATH" \
+    VIRTUAL_ENV="/app/venv" \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_CACHE_DIR=/tmp/pypoetry-cache \
+    ANONYMIZED_TELEMETRY=false
 
 # Use the virtual environment's pip to install packages
-RUN pip install --upgrade pip \
-    && pip install poetry \
-    && poetry config virtualenvs.create false
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir poetry
 
 # Create directories
 RUN mkdir -p /app/dependencies /app/data/sqlite /app/data/chroma_db /app/logs /app/run /app/resources
@@ -81,9 +86,10 @@ RUN mkdir -p /app/data && \
 COPY pyproject.toml README.md /app/
 
 # Fix for potential package installation issues with Poetry
-RUN pip install --upgrade setuptools wheel
-RUN poetry install --no-interaction --no-root || poetry install --no-interaction --no-root --without dev
-RUN pip install --force-reinstall dependencies/graphrag-1.2.1.dev27.tar.gz
+RUN pip install --no-cache-dir --upgrade setuptools wheel \
+    && poetry install --without docs --no-root \
+    && pip install --no-cache-dir --force-reinstall dependencies/graphrag-1.2.1.dev27.tar.gz \
+    && rm -rf "$POETRY_CACHE_DIR" /root/.cache/pip /root/.cache/pypoetry
 
 # Copy source code - Files that frequently change
 COPY docker/ /app/docker/

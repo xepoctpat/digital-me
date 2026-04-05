@@ -10,6 +10,10 @@ from flask import Blueprint, request
 from pydantic import ValidationError
 
 from lpm_kernel.api.common.responses import APIResponse
+from lpm_kernel.api.common.feature_flags import (
+    is_public_network_enabled,
+    public_network_disabled_message,
+)
 from lpm_kernel.common.logging import logger
 from .space_dto import CreateSpaceDTO
 from .space_service import space_service
@@ -195,6 +199,12 @@ def share_space(space_id: str) -> dict:
         Only spaces with finished status can be shared
     """
     try:
+        if not is_public_network_enabled():
+            return APIResponse.error(
+                message=public_network_disabled_message("Space sharing"),
+                code=403,
+            ), 403
+
         # Share the space
         space_share_id = space_service.share_space(space_id)
         

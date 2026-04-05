@@ -6,6 +6,10 @@ import logging
 from flask import Blueprint, request, jsonify
 
 from lpm_kernel.api.common.responses import APIResponse
+from lpm_kernel.api.common.feature_flags import (
+    is_public_network_enabled,
+    public_network_disabled_message,
+)
 from lpm_kernel.api.domains.kernel2.dto.role_dto import CreateRoleRequest, UpdateRoleRequest
 from lpm_kernel.api.domains.kernel2.dto.role_dto import ShareRoleRequest
 from lpm_kernel.api.domains.kernel2.services.role_service import role_service
@@ -140,6 +144,14 @@ def share_role():
     - 500: Internal server error
     """
     try:
+        if not is_public_network_enabled():
+            return jsonify(
+                APIResponse.error(
+                    public_network_disabled_message("Role sharing"),
+                    code=403,
+                )
+            ), 403
+
         data = request.get_json()
         share_request = ShareRoleRequest.from_dict(data)
         role = role_service.share_role(share_request)

@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { GithubOutlined, FileTextOutlined } from '@ant-design/icons';
+import { FileTextOutlined } from '@ant-design/icons';
 import { ModelStatus } from '../../../components/ModelStatus';
 import { useLoadInfoStore } from '@/store/useLoadInfoStore';
 import { useEffect } from 'react';
@@ -11,8 +11,9 @@ import { useUploadStore } from '@/store/useUploadStore';
 import { ROUTER_PATH } from '@/utils/router';
 import { EVENT } from '@/utils/event';
 import GitHubStars from '@/components/GithubStars';
+import { PUBLIC_NETWORK_ENABLED } from '@/utils/networkMode';
 
-export function Header() {
+export function Header(): JSX.Element {
   const pathname = usePathname();
   const isHomePage = pathname === ROUTER_PATH.HOME;
   const isWhitelistPage = pathname.startsWith(ROUTER_PATH.STANDALONE);
@@ -23,8 +24,11 @@ export function Header() {
 
   useEffect(() => {
     fetchLoadInfo();
-    fetchUploadList();
-  }, []);
+
+    if (PUBLIC_NETWORK_ENABLED) {
+      fetchUploadList();
+    }
+  }, [fetchLoadInfo, fetchUploadList]);
 
   useEffect(() => {
     const handleLogout = () => {
@@ -32,12 +36,12 @@ export function Header() {
       router.replace(ROUTER_PATH.HOME);
     };
 
-    addEventListener(EVENT.LOGOUT, handleLogout);
+    window.addEventListener(EVENT.LOGOUT, handleLogout);
 
     return () => {
-      removeEventListener(EVENT.LOGOUT, handleLogout);
+      window.removeEventListener(EVENT.LOGOUT, handleLogout);
     };
-  }, []);
+  }, [router]);
 
   return (
     <header

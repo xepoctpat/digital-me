@@ -4,6 +4,7 @@ from .common.logging import logger
 from .api import init_routes
 from .api.file_server.handler import FileServerHandler
 from .database.migration_manager import MigrationManager
+from .configs.config import Config
 import os
 import atexit
 import subprocess
@@ -16,6 +17,19 @@ def create_app():
     try:
         DatabaseSession.initialize()
         logger.info("Database connection initialized successfully")
+
+        config = Config.from_env()
+        db_path = config.database.db_file
+        if os.path.exists(db_path):
+            migrations_dir = os.path.join(
+                os.path.dirname(__file__), "database", "migrations"
+            )
+            migration_manager = MigrationManager(db_path)
+            applied_migrations = migration_manager.apply_migrations(migrations_dir)
+            if applied_migrations:
+                logger.info(
+                    f"Applied {len(applied_migrations)} pending database migrations"
+                )
     
     except Exception as e:
         logger.error(f"Failed to initialize database connection: {str(e)}")

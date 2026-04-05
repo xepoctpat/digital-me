@@ -1,5 +1,15 @@
 const nextConfig = {
   reactStrictMode: false,
+  env: {
+    NEXT_PUBLIC_ENABLE_PUBLIC_NETWORK:
+      process.env.NEXT_PUBLIC_ENABLE_PUBLIC_NETWORK || process.env.ENABLE_PUBLIC_NETWORK || 'false',
+    NEXT_PUBLIC_PUBLIC_APP_BASE_URL:
+      process.env.NEXT_PUBLIC_PUBLIC_APP_BASE_URL ||
+      process.env.PUBLIC_APP_BASE_URL ||
+      'https://app.secondme.io',
+    NEXT_PUBLIC_LOCAL_APP_PORT:
+      process.env.NEXT_PUBLIC_LOCAL_APP_PORT || process.env.LOCAL_APP_PORT || '8002'
+  },
   async rewrites() {
     const dockerApiBaseUrl = process.env.DOCKER_API_BASE_URL;
     const localApiBaseUrl = `${process.env.HOST_ADDRESS || 'http://127.0.0.1'}:${process.env.LOCAL_APP_PORT || 8002}`;

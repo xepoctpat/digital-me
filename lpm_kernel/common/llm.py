@@ -6,7 +6,6 @@ import numpy as np
 from lpm_kernel.configs.logging import get_train_process_logger
 logger = get_train_process_logger()
 import lpm_kernel.common.strategy.classification as classification
-from sentence_transformers import SentenceTransformer
 import json
 
 class EmbeddingError(Exception):

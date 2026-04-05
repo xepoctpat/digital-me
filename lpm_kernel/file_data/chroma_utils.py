@@ -1,10 +1,28 @@
 from typing import Optional, Dict, Any, List, Tuple
 import os
 import chromadb
+from chromadb.config import Settings
 import logging
 from lpm_kernel.configs.logging import get_train_process_logger
 
 logger = get_train_process_logger()
+
+
+def create_persistent_chroma_client(chroma_path: Optional[str] = None):
+    """Create a Chroma persistent client with anonymized telemetry disabled."""
+    persist_directory = chroma_path or os.getenv(
+        "CHROMA_PERSIST_DIRECTORY", "./data/chroma_db"
+    )
+    telemetry_impl = "lpm_kernel.file_data.chroma_telemetry.NoOpProductTelemetry"
+    settings = Settings(
+        anonymized_telemetry=False,
+        chroma_product_telemetry_impl=telemetry_impl,
+        chroma_telemetry_impl=telemetry_impl,
+        allow_reset=True,
+        is_persistent=True,
+        persist_directory=persist_directory,
+    )
+    return chromadb.PersistentClient(path=persist_directory, settings=settings)
 
 
 def get_embedding_dimension(embedding: List[float]) -> int:
@@ -73,7 +91,7 @@ def reinitialize_chroma_collections(dimension: int = 1536) -> bool:
     """
     try:
         chroma_path = os.getenv("CHROMA_PERSIST_DIRECTORY", "./data/chroma_db")
-        client = chromadb.PersistentClient(path=chroma_path)
+        client = create_persistent_chroma_client(chroma_path)
         
         # Delete and recreate document collection
         try:

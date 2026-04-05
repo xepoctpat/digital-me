@@ -2,7 +2,6 @@
 
 import RightArrowIcon from '@/components/svgs/RightArrowIcon';
 import classNames from 'classnames';
-import { useState } from 'react';
 
 interface Tool {
   name: string;

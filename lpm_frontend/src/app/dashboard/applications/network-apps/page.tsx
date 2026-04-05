@@ -10,7 +10,11 @@ import { useUploadStore } from '@/store/useUploadStore';
 import type { SpaceInfo } from '@/service/space';
 import { shareSpace } from '@/service/space';
 import { useLoadInfoStore } from '@/store/useLoadInfoStore';
-import { EVENT } from '@/utils/event';
+import {
+  PRIVATE_MODE_MESSAGE,
+  PUBLIC_NETWORK_ENABLED,
+  getPublicPortalUrl
+} from '@/utils/networkMode';
 
 // Mock data for demonstration - will be replaced with real data
 interface spaceStatus {
@@ -46,12 +50,6 @@ export default function NetworkApps() {
   const fetchAllSpaces = useSpaceStore((state) => state.fetchAllSpaces);
   const updateSpaceStatus = useSpaceStore((state) => state.updateSpaceStatus);
   const deleteSpace = useSpaceStore((state) => state.deleteSpace);
-
-  useEffect(() => {
-    if (!isRegistered) {
-      dispatchEvent(new Event(EVENT.SHOW_REGISTER_MODAL));
-    }
-  }, [isRegistered]);
 
   // Fetch spaces when component mounts - use empty dependency array to run only once
   useEffect(() => {
@@ -255,6 +253,12 @@ export default function NetworkApps() {
   };
 
   const handleShare = async (space_id: string) => {
+    if (!PUBLIC_NETWORK_ENABLED) {
+      message.info(PRIVATE_MODE_MESSAGE);
+
+      return;
+    }
+
     shareSpace(space_id).then((res) => {
       if (res.data.code == 0) {
         setShareSpaceId(res.data.data.space_share_id);
@@ -267,6 +271,13 @@ export default function NetworkApps() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {!PUBLIC_NETWORK_ENABLED && (
+        <div className="mb-6 rounded-lg border border-blue-100 bg-blue-50 p-4 text-blue-700">
+          <div className="font-medium mb-1">Private Mode</div>
+          <div className="text-sm">{PRIVATE_MODE_MESSAGE}</div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">My Network Apps</h1>
@@ -276,8 +287,17 @@ export default function NetworkApps() {
           </p>
         </div>
         <button
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          onClick={() => setShowCreateModal(true)}
+          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300"
+          disabled={!PUBLIC_NETWORK_ENABLED}
+          onClick={() => {
+            if (!PUBLIC_NETWORK_ENABLED) {
+              message.info(PRIVATE_MODE_MESSAGE);
+
+              return;
+            }
+
+            setShowCreateModal(true);
+          }}
         >
           <svg className="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
@@ -305,7 +325,10 @@ export default function NetworkApps() {
       )}
 
       <CreateSpaceModal
-        currentSecondMe={`https://app.secondme.io/${currentRegisteredUpload?.upload_name}/${currentRegisteredUpload?.instance_id}`}
+        currentSecondMe={getPublicPortalUrl(
+          currentRegisteredUpload?.upload_name,
+          currentRegisteredUpload?.instance_id
+        )}
         onClose={() => setShowCreateModal(false)}
         onSubmit={handleCreateSpace}
         open={showCreateModal}

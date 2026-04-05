@@ -18,6 +18,7 @@ import DocumentIcon from '@/components/svgs/DocumentIcon';
 import classNames from 'classnames';
 import { ROUTER_PATH } from '@/utils/router';
 import { useModelConfigStore } from '@/store/useModelConfigStore';
+import { PRIVATE_MODE_MESSAGE, PUBLIC_NETWORK_ENABLED } from '@/utils/networkMode';
 
 const Menu = () => {
   const pathname = usePathname();
@@ -38,10 +39,6 @@ const Menu = () => {
   const disabledChangeParams = useMemo(() => {
     return isTraining || trainSuspended;
   }, [isTraining, trainSuspended]);
-
-  const isRegistered = useMemo(() => {
-    return loadInfo?.status === 'online';
-  }, [loadInfo]);
 
   const name = useMemo(() => {
     return loadInfo?.name || 'Second Me';
@@ -223,8 +220,11 @@ const Menu = () => {
                             : 'text-gray-500 hover:bg-blue-50/50 hover:text-blue-600'
                         }`}
                         onClick={() => {
-                          if (tab.path === ROUTER_PATH.APPLICATIONS && !isRegistered) {
-                            dispatchEvent(new Event(EVENT.SHOW_REGISTER_MODAL));
+                          if (
+                            subTab.path === ROUTER_PATH.APPLICATIONS_NETWORK &&
+                            !PUBLIC_NETWORK_ENABLED
+                          ) {
+                            message.info(PRIVATE_MODE_MESSAGE);
 
                             return;
                           }

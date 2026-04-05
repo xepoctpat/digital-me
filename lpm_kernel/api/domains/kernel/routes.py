@@ -1,6 +1,8 @@
 import logging
 import os
+from collections import defaultdict
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from flask import Blueprint, jsonify
@@ -36,6 +38,133 @@ kernel_bp = Blueprint("kernel", __name__, url_prefix="/api/kernel")
 
 # l1_repository = L1Repository()
 l1_generator = L1Generator()
+
+
+def __normalize_memory_id(memory_id: Any) -> Optional[int]:
+    try:
+        return int(memory_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def __parse_datetime_value(value: Any) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value
+
+    if not value or not isinstance(value, str):
+        return None
+
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        pass
+
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+
+    return None
+
+
+def __serialize_datetime_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
+
+
+def __timeline_sort_key(timeline: Dict[str, Any]) -> tuple:
+    parsed_time = __parse_datetime_value(timeline.get("createTime"))
+    return (
+        parsed_time or datetime.max,
+        timeline.get("refMemoryId") if timeline.get("refMemoryId") is not None else 0,
+    )
+
+
+def __document_sort_key(document: Dict[str, Any]) -> tuple:
+    parsed_time = __parse_datetime_value(
+        document.get("source_created_time") or document.get("create_time")
+    )
+    return (parsed_time or datetime.max, document.get("id") or 0)
+
+
+def __serialize_shade(shade: L1Shade) -> Dict[str, Any]:
+    timelines = sorted((shade.timelines or []), key=__timeline_sort_key)
+    cluster_info = shade.cluster_info or {}
+
+    return {
+        "id": shade.id,
+        "name": shade.name,
+        "aspect": shade.aspect,
+        "icon": shade.icon,
+        "desc_third_view": shade.desc_third_view,
+        "content_third_view": shade.content_third_view,
+        "desc_second_view": shade.desc_second_view,
+        "content_second_view": shade.content_second_view,
+        "timelines": timelines,
+        "cluster_info": cluster_info,
+        "timeline_count": len(timelines),
+        "cluster_memory_count": len(cluster_info.get("memoryIds") or []),
+    }
+
+
+def __collect_shade_memory_ids(shade_payload: Dict[str, Any]) -> List[int]:
+    related_memory_ids: List[int] = []
+
+    cluster_info = shade_payload.get("cluster_info") or {}
+    for memory_id in cluster_info.get("memoryIds") or []:
+        normalized_id = __normalize_memory_id(memory_id)
+        if normalized_id is not None:
+            related_memory_ids.append(normalized_id)
+
+    for timeline in shade_payload.get("timelines") or []:
+        normalized_id = __normalize_memory_id(timeline.get("refMemoryId"))
+        if normalized_id is not None:
+            related_memory_ids.append(normalized_id)
+
+    return list(dict.fromkeys(related_memory_ids))
+
+
+def __build_related_memories(shade_payload: Dict[str, Any]) -> Dict[str, Any]:
+    related_memory_ids = __collect_shade_memory_ids(shade_payload)
+    timeline_map: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+
+    for timeline in shade_payload.get("timelines") or []:
+        normalized_id = __normalize_memory_id(timeline.get("refMemoryId"))
+        if normalized_id is not None:
+            timeline_map[normalized_id].append(timeline)
+
+    documents = document_service.get_documents_for_api(related_memory_ids, include_l0=False)
+    documents_by_id = {doc.get("id"): doc for doc in documents}
+
+    related_memories = []
+    missing_memory_ids = []
+    for memory_id in related_memory_ids:
+        document = documents_by_id.get(memory_id)
+        if not document:
+            missing_memory_ids.append(memory_id)
+            continue
+
+        related_memories.append(
+            {
+                **document,
+                "create_time": __serialize_datetime_value(document.get("create_time")),
+                "source_created_time": __serialize_datetime_value(document.get("source_created_time")),
+                "source_modified_time": __serialize_datetime_value(document.get("source_modified_time")),
+                "timeline_entries": sorted(
+                    timeline_map.get(memory_id, []), key=__timeline_sort_key
+                ),
+            }
+        )
+
+    related_memories.sort(key=__document_sort_key)
+
+    return {
+        "related_memories": related_memories,
+        "related_memory_count": len(related_memories),
+        "missing_memory_ids": missing_memory_ids,
+    }
 
 
 def __store_version(
@@ -85,6 +214,8 @@ def __store_shades(session, new_version: int, shades_list: list) -> None:
             content_third_view=shade.content_third_view,
             desc_second_view=shade.desc_second_view,
             content_second_view=shade.content_second_view,
+            timelines=[timeline.to_json() for timeline in (shade.timelines or [])],
+            cluster_info=getattr(shade, "cluster_info", None) or {},
             create_time=datetime.now(),
         )
         session.add(shade_data)
@@ -101,7 +232,7 @@ def __store_clusters(session, new_version: int, cluster_list: list) -> None:
             version=new_version,
             cluster_id=cluster.get("clusterId"),
             memory_ids=[m.get("memoryId") for m in cluster.get("memoryList", [])],
-            cluster_center=cluster.get("clusterCenter"),
+            cluster_center=cluster.get("centerEmbedding") or cluster.get("clusterCenter"),
             create_time=datetime.now(),
         )
         session.add(cluster_data)
@@ -274,18 +405,7 @@ def get_l1_version(version):
                     "content_third_view": bio.content_third_view,
                     "summary": bio.summary,
                     "summary_third_view": bio.summary_third_view,
-                    "shades": [
-                        {
-                            "name": s.name,
-                            "aspect": s.aspect,
-                            "icon": s.icon,
-                            "desc_third_view": s.desc_third_view,
-                            "content_third_view": s.content_third_view,
-                            "desc_second_view": s.desc_second_view,
-                            "content_second_view": s.content_second_view,
-                        }
-                        for s in shades
-                    ],
+                    "shades": [__serialize_shade(s) for s in shades],
                 },
                 "clusters": [
                     {
@@ -305,6 +425,46 @@ def get_l1_version(version):
 
     except Exception as e:
         logger.error(f"Error getting L1 version {version}: {str(e)}", exc_info=True)
+        return jsonify(APIResponse.error(str(e)))
+
+
+@kernel_bp.route("/l1/global/version/<int:version>/shade/<int:shade_id>", methods=["GET"])
+def get_l1_shade_detail(version, shade_id):
+    """Get a single stored shade plus chronologically ordered related memories."""
+    try:
+        with DatabaseSession.session() as session:
+            shade = (
+                session.query(L1Shade)
+                .filter(L1Shade.version == version, L1Shade.id == shade_id)
+                .first()
+            )
+
+            if not shade:
+                return jsonify(
+                    APIResponse.error(
+                        f"Shade {shade_id} not found for version {version}"
+                    )
+                )
+
+            shade_payload = __serialize_shade(shade)
+
+        related_memory_payload = __build_related_memories(shade_payload)
+
+        return jsonify(
+            APIResponse.success(
+                data={
+                    "version": version,
+                    "shade": shade_payload,
+                    **related_memory_payload,
+                }
+            )
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Error getting L1 shade detail for version {version}, shade {shade_id}: {str(e)}",
+            exc_info=True,
+        )
         return jsonify(APIResponse.error(str(e)))
 
 

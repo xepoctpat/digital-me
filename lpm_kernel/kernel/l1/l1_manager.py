@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -11,6 +11,7 @@ from lpm_kernel.models.l1 import L1Bio
 from lpm_kernel.models.l1 import (
     L1GenerationResult,
     L1Version,
+    L1Shade,
     GlobalBioDTO,
     StatusBioDTO,
 )
@@ -53,7 +54,7 @@ def extract_notes_from_documents(documents) -> tuple[List[Note], list]:
             continue
 
         # Ensure create_time is in string format
-        create_time = doc.get("create_time")
+        create_time = doc.get("source_created_time") or doc.get("create_time")
         if isinstance(create_time, datetime):
             create_time = create_time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -87,10 +88,10 @@ def extract_notes_from_documents(documents) -> tuple[List[Note], list]:
                 for chunk in chunks
                 if all_chunk_embeddings.get(chunk.id)
             ],
-            title=insight_data.get("title", ""),
+            title=doc.get("title") or insight_data.get("title", ""),
             summary=summary_data.get("summary", ""),
             insight=insight_data.get("insight", ""),
-            tags=summary_data.get("keywords", []),
+            tags=summary_data.get("keywords") or doc.get("source_tags", []),
         )
         notes_list.append(note)
         memory_list.append({"memoryId": str(doc_id), "embedding": doc_embedding})
@@ -128,24 +129,13 @@ def generate_l1_from_l0() -> L1GenerationResult:
         # Add log in l1_manager.py
         logger.info(f"chunk_topics content: {chunk_topics}")
 
-        # 3.3 Generate features for each cluster and merge them
+        # 3.3 Generate features for each cluster
         shades = generate_shades(clusters, l1_generator, notes_list)
-        shades_merge_infos = convert_from_shades_to_merge_info(shades)
-
         logger.info(f"Generated {len(shades)} shades")
-        merged_shades = l1_generator.merge_shades(shades_merge_infos)
-        logger.info(f"Merged shades success: {merged_shades.success}")
-        logger.info(
-            f"Number of merged shades: {len(merged_shades.merge_shade_list) if merged_shades.success else 0}"
-        )
 
         # 3.4 Generate global biography
         bio = l1_generator.gen_global_biography(
-            old_profile=Bio(
-                shadesList=merged_shades.merge_shade_list
-                if merged_shades.success
-                else []
-            ),
+            old_profile=Bio(shadesList=[shade.to_json() for shade in shades]),
             cluster_list=clusters.get("clusterList", []),
         )
         logger.info(f"Generated global biography: {bio}")
@@ -180,6 +170,24 @@ def generate_shades(clusters, l1_generator, notes_list):
             if cluster_notes:
                 shade = l1_generator.gen_shade_for_cluster([], cluster_notes, [])
                 if shade:
+                    normalized_memory_ids = []
+                    for memory_id in cluster_memory_ids:
+                        try:
+                            normalized_memory_ids.append(int(memory_id))
+                        except (TypeError, ValueError):
+                            logger.warning(
+                                f"Skipping non-integer cluster memory id in shade provenance: {memory_id}"
+                            )
+
+                    shade.id = str(cluster.get("clusterId")) if cluster.get("clusterId") is not None else None
+                    shade.cluster_info = {
+                        "clusterId": cluster.get("clusterId"),
+                        "memoryIds": normalized_memory_ids,
+                        "clusterSize": len(normalized_memory_ids),
+                        "centerEmbedding": cluster.get("centerEmbedding")
+                        or cluster.get("clusterCenter")
+                        or [],
+                    }
                     shades.append(shade)
                     logger.info(
                         f"Generated shade for cluster: {shade.name if hasattr(shade, 'name') else 'Unknown'}"
@@ -197,7 +205,7 @@ def convert_from_shades_to_merge_info(shades: List[ShadeInfo]) -> List[ShadeMerg
         content_third_view=shade.content_third_view,
         desc_second_view=shade.desc_second_view,
         content_second_view=shade.content_second_view,
-        cluster_info=None
+        cluster_info=getattr(shade, "cluster_info", None)
     ) for shade in shades]
 
 
@@ -274,11 +282,33 @@ def get_latest_global_bio() -> Optional[GlobalBioDTO]:
                 .first()
             )
 
+            shades = (
+                session.query(L1Shade)
+                .filter(L1Shade.version == latest_version.version)
+                .all()
+            )
+
             if not bio:
                 return None
 
             # Convert to DTO and return
-            return GlobalBioDTO.from_model(bio)
+            bio_dto = GlobalBioDTO.from_model(bio)
+            bio_dto.shades = [
+                {
+                    "id": shade.id,
+                    "name": shade.name,
+                    "aspect": shade.aspect,
+                    "icon": shade.icon,
+                    "desc_second_view": shade.desc_second_view,
+                    "desc_third_view": shade.desc_third_view,
+                    "content_second_view": shade.content_second_view,
+                    "content_third_view": shade.content_third_view,
+                    "timelines": shade.timelines or [],
+                    "cluster_info": shade.cluster_info or {},
+                }
+                for shade in shades
+            ]
+            return bio_dto
     except Exception as e:
         logger.error(f"Error getting global biography: {str(e)}", exc_info=True)
         return None

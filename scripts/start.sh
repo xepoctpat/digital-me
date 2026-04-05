@@ -209,7 +209,7 @@ start_services() {
         log_info "Copying environment variables to frontend directory..."
         if [[ -f "../.env" ]]; then
             # Extract required environment variables and create frontend .env file
-            grep -E "^(HOST_ADDRESS|LOCAL_APP_PORT)=" "../.env" > .env
+            grep -E "^(HOST_ADDRESS|LOCAL_APP_PORT|ENABLE_PUBLIC_NETWORK|PUBLIC_APP_BASE_URL)=" "../.env" > .env
             log_success "Environment variables copied to frontend .env file"
         else
             log_warning "Root directory .env file does not exist, cannot copy environment variables"

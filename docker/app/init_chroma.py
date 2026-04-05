@@ -6,7 +6,11 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from lpm_kernel.api.services.user_llm_config_service import UserLLMConfigService
-from lpm_kernel.file_data.chroma_utils import detect_embedding_model_dimension, reinitialize_chroma_collections
+from lpm_kernel.file_data.chroma_utils import (
+    create_persistent_chroma_client,
+    detect_embedding_model_dimension,
+    reinitialize_chroma_collections,
+)
 
 def init_chroma_db():
     chroma_path = os.getenv("CHROMA_PERSIST_DIRECTORY", "./data/chroma_db")
@@ -33,7 +37,7 @@ def init_chroma_db():
         print(f"Error detecting embedding dimension, using default: {dimension}. Error: {e}")
 
     try:
-        client = chromadb.PersistentClient(path=chroma_path)
+        client = create_persistent_chroma_client(chroma_path)
         collections_to_init = ["documents", "document_chunks"]
         dimension_mismatch_detected = False
         

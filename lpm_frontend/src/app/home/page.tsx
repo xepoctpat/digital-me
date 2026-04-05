@@ -10,6 +10,7 @@ import { ROUTER_PATH } from '@/utils/router';
 import Footer from './components/Footer';
 import SocialMedia from './components/SocialMedia';
 import { message } from 'antd';
+import { PRIVATE_MODE_MESSAGE, PUBLIC_NETWORK_ENABLED } from '@/utils/networkMode';
 
 const NetworkSphere = dynamic(() => import('@/components/NetworkSphere'), {
   ssr: false,
@@ -44,6 +45,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (!PUBLIC_NETWORK_ENABLED) {
+      return;
+    }
+
     getUploadCount()
       .then((res) => {
         if (res.data.code === 0) {
@@ -123,8 +128,14 @@ export default function Home() {
             className={`text-sm mb-12 transition-opacity duration-700 ease-in-out ${contentVisible ? 'opacity-100' : 'opacity-0'}`}
             style={{ transitionDelay: '400ms', color: '#64748B' }}
           >
-            <span className="font-medium text-[#334155]">{count}</span>{' '}
-            <span>Second Me in network</span>
+            {PUBLIC_NETWORK_ENABLED ? (
+              <>
+                <span className="font-medium text-[#334155]">{count}</span>{' '}
+                <span>Second Me in network</span>
+              </>
+            ) : (
+              <span>{PRIVATE_MODE_MESSAGE}</span>
+            )}
           </div>
         </div>
 

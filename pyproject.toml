@@ -27,6 +27,7 @@ numpy = "^1.26.0"
 openai = "^1.50.0"
 langchain = "0.3.13"
 chromadb = "^0.4.22"
+pyyaml = "^6.0.2"
 sentencepiece = "^0.2.0"
 httpx = {extras = ["socks"], version = "^0.28.1"}
 python-socks = "^2.4.0"

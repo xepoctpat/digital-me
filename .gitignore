@@ -4,11 +4,13 @@ __pycache__
 .ipynb_checkpoints
 .pytest_cache
 .ruff_cache
+.venv/
 .vscode/
 .ruff_cache/
 poetry.lock
 .hf_cache/
 .poetry-venv/
+.python312/
 
 llama.cpp
 *.ipynb
@@ -79,4 +81,28 @@ llama_cpp_backup/llama.cpp.zip
 scripts/check_cuda_status.ps1
 scripts/test_cuda_detection.bat
 .env
+.env.*
+!.env.example
+!.env.template
 .gpu_selected
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.pkl
+*.session
+*.cookies
+*.lnk
+integrate/wxpy.pkl
+
+# Local personal memory exports
+key-memories/
+notes/

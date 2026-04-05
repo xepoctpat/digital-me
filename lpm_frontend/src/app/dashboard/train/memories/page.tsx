@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import InfoModal from '@/components/InfoModal';
 import MemoryList from '@/components/train/MemoryList';
@@ -9,7 +9,13 @@ import UploadMemories from '@/components/train/UploadMemories';
 import { message } from 'antd';
 import { deleteMemory, getMemoryList } from '@/service/memory';
 import { useTrainingStore } from '@/store/useTrainingStore';
-import { fileTransformToMemory } from '@/utils/memory';
+import {
+  fileTransformToMemory,
+  filterAndSortMemories,
+  getMemoryTypeValue,
+  type MemoryBrowserFilters,
+  sortMemoriesByTimeline
+} from '@/utils/memory';
 import { ROUTER_PATH } from '@/utils/router';
 import { EVENT } from '@/utils/event';
 
@@ -39,26 +45,62 @@ const trainSectionInfo: Record<string, TrainSectionInfo> = {
     description:
       'View and manage all your uploaded training materials. Organize and review your memories before starting the training process.',
     features: [
-      'List view of all memories',
-      'Memory type identification',
-      'Size and upload time display',
+      'Filterable note browsing by tag, type, resource state, and date range',
+      'Text search across note title, filename, and body',
+      'Source-date versus import-date sorting toggles',
       'Memory content preview',
       'Delete and manage memories'
     ]
   }
 };
 
+const createDefaultMemoryBrowserFilters = (): MemoryBrowserFilters => ({
+  query: '',
+  tag: '',
+  memoryType: '',
+  resourceFilter: 'all',
+  startDate: '',
+  endDate: '',
+  sortField: 'source',
+  sortDirection: 'desc'
+});
+
+const formatFilterLabel = (value: string) => {
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+};
+
+interface UploadedMemoryLike {
+  name: string;
+  size?: number | null;
+}
+
 export interface Memory {
   id: string;
   type: 'text' | 'file' | 'folder';
   name: string;
+  title?: string;
   content?: string;
   size: string;
   uploadedAt: string;
+  sourceCreatedAt?: string;
+  sourceModifiedAt?: string;
+  sourceMemoryType?: string;
+  tags?: string[];
+  resources?: {
+    url: string;
+    title?: string;
+    type?: string;
+    process?: string;
+  }[];
+  isHostedImport?: boolean;
   isTrained?: boolean;
 }
 
-export default function TrainPage() {
+export default function TrainPage(): JSX.Element {
   // Title and explanation section
   const pageTitle = 'Upload Memories';
   const pageDescription =
@@ -68,8 +110,40 @@ export default function TrainPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedInfo, setSelectedInfo] = useState<string | null>(null);
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [memoryFilters, setMemoryFilters] = useState<MemoryBrowserFilters>(
+    createDefaultMemoryBrowserFilters
+  );
 
   const setStatus = useTrainingStore((state) => state.setStatus);
+
+  const availableTags = useMemo(() => {
+    return Array.from(new Set(memories.flatMap((memory) => memory.tags || []))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [memories]);
+
+  const availableMemoryTypes = useMemo(() => {
+    return Array.from(new Set(memories.map((memory) => getMemoryTypeValue(memory)))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [memories]);
+
+  const filteredMemories = useMemo(() => {
+    return filterAndSortMemories(memories, memoryFilters);
+  }, [memories, memoryFilters]);
+
+  const hasActiveMemoryFilters = useMemo(() => {
+    return (
+      memoryFilters.query.trim().length > 0 ||
+      Boolean(memoryFilters.tag) ||
+      Boolean(memoryFilters.memoryType) ||
+      memoryFilters.resourceFilter !== 'all' ||
+      Boolean(memoryFilters.startDate) ||
+      Boolean(memoryFilters.endDate) ||
+      memoryFilters.sortField !== 'source' ||
+      memoryFilters.sortDirection !== 'desc'
+    );
+  }, [memoryFilters]);
 
   useEffect(() => {
     const fetchMemories = async () => {
@@ -79,7 +153,9 @@ export default function TrainPage() {
             throw new Error(res.data.message);
           } else {
             const fileList = res.data.data;
-            const newMemories = fileList.map((file) => fileTransformToMemory(file));
+            const newMemories = sortMemoriesByTimeline(
+              fileList.map((file) => fileTransformToMemory(file))
+            );
 
             setMemories(newMemories);
             // Only update status when there are no training steps
@@ -101,7 +177,7 @@ export default function TrainPage() {
     return () => {
       removeEventListener(EVENT.REFRESH_MEMORIES, fetchMemories);
     };
-  }, []);
+  }, [setStatus]);
 
   const scrollToBottom = () => {
     if (containerRef.current) {
@@ -112,18 +188,19 @@ export default function TrainPage() {
     }
   };
 
-  const handleFileUpload = (files: any[]) => {
+  const handleFileUpload = (files: UploadedMemoryLike[]) => {
     const newMemories: Memory[] = Array.from(files).map((file) => ({
       id: Math.random().toString(),
       type: 'file',
       name: file.name,
-      size: `${(file.size / 1024).toFixed(1)} KB`,
+      title: file.name,
+      size: `${((file.size || 0) / 1024).toFixed(1)} KB`,
       uploadedAt: new Date().toLocaleString(),
       isTrained: false
     }));
 
     setMemories((prev) => {
-      const updatedMemories = [...newMemories, ...prev];
+      const updatedMemories = sortMemoriesByTimeline([...newMemories, ...prev]);
       const trainingProgress = useTrainingStore.getState().trainingProgress;
 
       if (trainingProgress.overall_progress === 0) {
@@ -154,6 +231,20 @@ export default function TrainPage() {
     } else {
       message.error(res.data.message);
     }
+  };
+
+  const updateMemoryFilter = <K extends keyof MemoryBrowserFilters>(
+    key: K,
+    value: MemoryBrowserFilters[K]
+  ) => {
+    setMemoryFilters((previousFilters) => ({
+      ...previousFilters,
+      [key]: value
+    }));
+  };
+
+  const handleResetMemoryFilters = () => {
+    setMemoryFilters(createDefaultMemoryBrowserFilters());
   };
 
   const renderInfoButton = (section: string) => (
@@ -199,7 +290,217 @@ export default function TrainPage() {
             <h2 className="text-xl font-semibold tracking-tight text-gray-900">Memory List</h2>
             {renderInfoButton('memory-list')}
           </div>
-          <MemoryList memories={memories} onDelete={handleDeleteMemory} />
+
+          <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50/80 p-4">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Browse imported notes</h3>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Search title, body, or filename, then narrow by tags, memory type, linked
+                    resources, and chronology.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                  <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 font-medium text-gray-700">
+                    Showing {filteredMemories.length} of {memories.length} notes
+                  </span>
+                  {hasActiveMemoryFilters ? (
+                    <button
+                      className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 font-medium text-gray-700 transition-colors hover:border-blue-200 hover:text-blue-600"
+                      onClick={handleResetMemoryFilters}
+                      type="button"
+                    >
+                      Clear filters
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <label className="xl:col-span-2">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Search notes
+                  </span>
+                  <input
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-blue-400"
+                    onChange={(event) => updateMemoryFilter('query', event.target.value)}
+                    placeholder="Search title, filename, or body"
+                    type="search"
+                    value={memoryFilters.query}
+                  />
+                </label>
+
+                <label>
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Tag
+                  </span>
+                  <select
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-blue-400"
+                    onChange={(event) => updateMemoryFilter('tag', event.target.value)}
+                    value={memoryFilters.tag}
+                  >
+                    <option value="">All tags</option>
+                    {availableTags.map((tag) => (
+                      <option key={tag} value={tag}>
+                        {tag}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Memory type
+                  </span>
+                  <select
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-blue-400"
+                    onChange={(event) => updateMemoryFilter('memoryType', event.target.value)}
+                    value={memoryFilters.memoryType}
+                  >
+                    <option value="">All types</option>
+                    {availableMemoryTypes.map((memoryType) => (
+                      <option key={memoryType} value={memoryType}>
+                        {formatFilterLabel(memoryType)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Linked resources
+                  </span>
+                  <select
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-blue-400"
+                    onChange={(event) =>
+                      updateMemoryFilter(
+                        'resourceFilter',
+                        event.target.value as MemoryBrowserFilters['resourceFilter']
+                      )
+                    }
+                    value={memoryFilters.resourceFilter}
+                  >
+                    <option value="all">Any resource state</option>
+                    <option value="linked">Has linked resources</option>
+                    <option value="image">Image-backed notes</option>
+                    <option value="none">No linked resources</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    From date
+                  </span>
+                  <input
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-blue-400"
+                    max={memoryFilters.endDate || undefined}
+                    onChange={(event) => updateMemoryFilter('startDate', event.target.value)}
+                    type="date"
+                    value={memoryFilters.startDate}
+                  />
+                </label>
+
+                <label>
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    To date
+                  </span>
+                  <input
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-blue-400"
+                    min={memoryFilters.startDate || undefined}
+                    onChange={(event) => updateMemoryFilter('endDate', event.target.value)}
+                    type="date"
+                    value={memoryFilters.endDate}
+                  />
+                </label>
+
+                <div className="md:col-span-2">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Sort by
+                  </span>
+                  <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white">
+                    <button
+                      className={`px-3 py-2 text-sm font-medium transition-colors ${
+                        memoryFilters.sortField === 'source'
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                      onClick={() => updateMemoryFilter('sortField', 'source')}
+                      type="button"
+                    >
+                      Source date
+                    </button>
+                    <button
+                      className={`border-l border-gray-200 px-3 py-2 text-sm font-medium transition-colors ${
+                        memoryFilters.sortField === 'imported'
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                      onClick={() => updateMemoryFilter('sortField', 'imported')}
+                      type="button"
+                    >
+                      Import date
+                    </button>
+                  </div>
+                </div>
+
+                <div className="md:col-span-2">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Order
+                  </span>
+                  <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white">
+                    <button
+                      className={`px-3 py-2 text-sm font-medium transition-colors ${
+                        memoryFilters.sortDirection === 'desc'
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                      onClick={() => updateMemoryFilter('sortDirection', 'desc')}
+                      type="button"
+                    >
+                      Newest first
+                    </button>
+                    <button
+                      className={`border-l border-gray-200 px-3 py-2 text-sm font-medium transition-colors ${
+                        memoryFilters.sortDirection === 'asc'
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                      onClick={() => updateMemoryFilter('sortDirection', 'asc')}
+                      type="button"
+                    >
+                      Oldest first
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500">
+                The date range follows the selected date basis, so you can inspect either original
+                note chronology or the timing of a specific import batch.
+              </p>
+            </div>
+          </div>
+
+          <MemoryList
+            emptyStateDescription={
+              memories.length === 0
+                ? 'Upload notes, files, or folders to start building your local memory timeline.'
+                : hasActiveMemoryFilters
+                  ? 'Try broadening the search, date range, or resource filters to surface more notes.'
+                  : 'No memories are available yet.'
+            }
+            emptyStateTitle={
+              memories.length === 0
+                ? 'No memories uploaded yet'
+                : hasActiveMemoryFilters
+                  ? 'No notes match the current filters'
+                  : 'No memories found'
+            }
+            memories={filteredMemories}
+            onDelete={handleDeleteMemory}
+          />
         </div>
 
         {/* Next Button */}

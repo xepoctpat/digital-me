@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, message, Switch, Tooltip, Typography } from 'antd';
 import {
   GlobalOutlined,
@@ -8,7 +8,8 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   SyncOutlined,
-  QuestionCircleOutlined
+  QuestionCircleOutlined,
+  LockOutlined
 } from '@ant-design/icons';
 
 import type { Upload } from '@/service/upload';
@@ -20,13 +21,22 @@ import NetWorkMemberList from './NetWorkMemberList';
 import { useLoadInfoStore } from '@/store/useLoadInfoStore';
 import { getCurrentInfo } from '@/service/info';
 import { copyToClipboard } from '@/utils/copy';
+import {
+  PRIVATE_MODE_MESSAGE,
+  PUBLIC_NETWORK_ENABLED,
+  getPublicChatApiUrl,
+  getPublicPortalUrl
+} from '@/utils/networkMode';
 
 interface RegisterUploadModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-export default function RegisterUploadModal({ open, onClose }: RegisterUploadModalProps) {
+export default function RegisterUploadModal({
+  open,
+  onClose
+}: RegisterUploadModalProps): JSX.Element {
   const [currentUpload, setCurrentUpload] = useState<Upload | null>(null);
 
   const addUpload = useUploadStore((state) => state.addUpload);
@@ -39,34 +49,22 @@ export default function RegisterUploadModal({ open, onClose }: RegisterUploadMod
   const loadInfo = useLoadInfoStore((state) => state.loadInfo);
 
   const [registerLoading, setRegisterLoading] = useState<boolean>(false);
-
-  const isRegistered = useMemo(() => {
-    return loadInfo?.status === 'online';
-  }, [loadInfo]);
-  const registerStatus = useMemo(() => {
-    return loadInfo?.status;
-  }, [loadInfo]);
+  const isRegistered = loadInfo?.status === 'online';
+  const registerStatus = loadInfo?.status;
 
   const [messageApi, contextHolder] = message.useMessage();
+  const pollingIntervalsRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    if (open) {
-      startPolling();
-      fetchUploadList();
+  const stopPolling = useCallback(() => {
+    const intervalId = pollingIntervalsRef.current;
+
+    if (intervalId !== null) {
+      clearInterval(intervalId);
+      pollingIntervalsRef.current = null;
     }
-  }, [open, registerStatus]);
+  }, []);
 
-  useEffect(() => {
-    // Clean up all polling when component closes
-    if (!open && pollingIntervalsRef.current) {
-      clearInterval(pollingIntervalsRef.current);
-    }
-  }, [open]);
-
-  // Store polling interval IDs for each upload
-  const pollingIntervalsRef = useRef<NodeJS.Timeout | null>(null);
-
-  const startPolling = () => {
+  const startPolling = useCallback(() => {
     const fetchStatus = async () => {
       try {
         const response = await getCurrentInfo();
@@ -80,7 +78,6 @@ export default function RegisterUploadModal({ open, onClose }: RegisterUploadMod
             instance_id: response.data.data.instance_id
           });
 
-          // If the upload is offline, we will continue and try to connect
           if (
             response.data.data.status === 'online' ||
             response.data.data.status === 'unregistered'
@@ -91,58 +88,56 @@ export default function RegisterUploadModal({ open, onClose }: RegisterUploadMod
           throw new Error(`Failed to poll status: ${response.data.message}`);
         }
       } catch (error) {
-        console.error(`Failed to poll status:`, error);
-
+        console.error('Failed to poll status:', error);
         stopPolling();
       }
     };
 
-    fetchStatus();
+    stopPolling();
+    void fetchStatus();
 
-    // Create polling and save the interval ID
-    const intervalId = setInterval(async () => {
-      fetchStatus();
-    }, 3000); // Poll every 3 seconds
+    pollingIntervalsRef.current = setInterval(() => {
+      void fetchStatus();
+    }, 3000);
+  }, [setLoadInfo, stopPolling]);
 
-    // Save reference to this polling
-    if (pollingIntervalsRef.current) {
-      clearInterval(pollingIntervalsRef.current);
+  const handleConnectUpload = useCallback(async () => {
+    if (!PUBLIC_NETWORK_ENABLED) {
+      return;
     }
 
-    pollingIntervalsRef.current = intervalId;
-
-    return intervalId;
-  };
-
-  // Stop polling for a specific upload
-  const stopPolling = () => {
-    if (pollingIntervalsRef.current) {
-      clearInterval(pollingIntervalsRef.current);
-    }
-  };
-
-  // Clean up all polling when component unmounts
-  useEffect(() => {
-    return () => {
-      // Clean up all polling
-      if (pollingIntervalsRef.current) {
-        clearInterval(pollingIntervalsRef.current);
-      }
-    };
-  }, []);
-
-  const handleConnectUpload = async () => {
     const res = await connectUpload();
 
-    // Start polling to check upload status
     if (res.data.code === 0) {
       fetchLoadInfo();
     } else {
       messageApi.error(`failed to connect, ${res.data.message}`);
     }
-  };
+  }, [fetchLoadInfo, messageApi]);
+
+  const handleModalClose = useCallback(() => {
+    stopPolling();
+    onClose();
+  }, [onClose, stopPolling]);
+
+  useEffect(() => {
+    if (!PUBLIC_NETWORK_ENABLED || !open) {
+      return;
+    }
+
+    startPolling();
+    void fetchUploadList();
+
+    return stopPolling;
+  }, [fetchUploadList, open, startPolling, stopPolling]);
+
+  useEffect(() => stopPolling, [stopPolling]);
 
   const handleRegister = async () => {
+    if (!PUBLIC_NETWORK_ENABLED) {
+      return;
+    }
+
     if (!currentUpload) {
       messageApi.warning('No Second Me available to register');
 
@@ -186,6 +181,10 @@ export default function RegisterUploadModal({ open, onClose }: RegisterUploadMod
   };
 
   const handleDelete = async (upload: Upload) => {
+    if (!PUBLIC_NETWORK_ENABLED) {
+      return;
+    }
+
     if (!upload.upload_name || !upload.instance_id) {
       messageApi.error('Invalid Second Me data');
 
@@ -213,12 +212,14 @@ export default function RegisterUploadModal({ open, onClose }: RegisterUploadMod
   };
 
   useEffect(() => {
-    if (open && registerStatus === 'offline') {
-      handleConnectUpload();
+    if (!PUBLIC_NETWORK_ENABLED || !open || registerStatus !== 'offline') {
+      return;
     }
-  }, [open, registerStatus]);
 
-  const renderLinkCard = () => {
+    void handleConnectUpload();
+  }, [handleConnectUpload, open, registerStatus]);
+
+  const renderLinkCard = (): JSX.Element | null => {
     if (registerStatus === 'unregistered' || !currentUpload) return null;
 
     return (
@@ -226,13 +227,13 @@ export default function RegisterUploadModal({ open, onClose }: RegisterUploadMod
         <div className="text-sm leading-5 text-indigo-600 mb-1 font-medium">Second Me URL</div>
         <div className="flex justify-between items-center bg-indigo-50 p-4 rounded-lg shadow-sm border border-indigo-100 relative">
           <div className="text-sm text-indigo-700 truncate w-[90%]">
-            https://app.secondme.io/{currentUpload.upload_name}/{currentUpload.instance_id}
+            {getPublicPortalUrl(currentUpload.upload_name, currentUpload.instance_id)}
           </div>
           <button
             className="absolute top-1/2 -translate-y-1/2 right-2 p-1.5 bg-indigo-100 text-indigo-600 rounded-md hover:bg-indigo-200 transition-colors"
             onClick={() => {
               copyToClipboard(
-                `https://app.secondme.io/${currentUpload.upload_name}/${currentUpload.instance_id}`
+                getPublicPortalUrl(currentUpload.upload_name, currentUpload.instance_id)
               )
                 .then(() => {
                   message.success('Copied.');
@@ -266,14 +267,12 @@ export default function RegisterUploadModal({ open, onClose }: RegisterUploadMod
         </div>
         <div className="flex justify-between items-center bg-indigo-50 p-4 rounded-lg shadow-sm border border-indigo-100 relative">
           <div className="text-sm text-indigo-700 truncate w-[90%]">
-            https://app.secondme.io/api/chat/{currentUpload.instance_id}/chat/completions
+            {getPublicChatApiUrl(currentUpload.instance_id)}
           </div>
           <button
             className="absolute top-1/2 -translate-y-1/2 right-2 p-1.5 bg-indigo-100 text-indigo-600 rounded-md hover:bg-indigo-200 transition-colors"
             onClick={() => {
-              copyToClipboard(
-                `https://app.secondme.io/api/chat/${currentUpload.instance_id}/chat/completions`
-              )
+              copyToClipboard(getPublicChatApiUrl(currentUpload.instance_id))
                 .then(() => {
                   message.success('Copied.');
                 })
@@ -296,12 +295,45 @@ export default function RegisterUploadModal({ open, onClose }: RegisterUploadMod
     );
   };
 
+  if (!PUBLIC_NETWORK_ENABLED) {
+    return (
+      <Modal
+        centered
+        footer={null}
+        onCancel={handleModalClose}
+        open={open}
+        title={
+          <div className="flex items-center gap-2 text-lg">
+            <LockOutlined className="text-blue-500" />
+            <span>Private Mode Enabled</span>
+          </div>
+        }
+        width={640}
+      >
+        {contextHolder}
+        <div className="space-y-4 text-sm text-gray-600 py-2">
+          <p>
+            Your Second Me is staying local for now, so public-network registration and public
+            sharing are turned off by default.
+          </p>
+          <p>
+            You can still upload memories, train locally, inspect how it behaves, and learn how the
+            system works before exposing anything publicly.
+          </p>
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-blue-700">
+            {PRIVATE_MODE_MESSAGE}
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       centered
       className="register-upload-modal"
       footer={null}
-      onCancel={onClose}
+      onCancel={handleModalClose}
       open={open}
       title={
         <div className="flex items-center gap-2 text-lg">
@@ -391,7 +423,7 @@ export default function RegisterUploadModal({ open, onClose }: RegisterUploadMod
                       {' '}
                       {/* Added left margin */}
                       <Switch
-                        checked={registerStatus !== 'unregistered'}
+                        checked={registerStatus ? registerStatus !== 'unregistered' : false}
                         className="scale-125"
                         loading={registerLoading}
                         onChange={(checked) => {

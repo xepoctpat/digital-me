@@ -9,6 +9,7 @@ from lpm_kernel.api.common.responses import APIResponse
 from lpm_kernel.configs.config import Config
 from lpm_kernel.file_data.chunker import DocumentChunker
 from lpm_kernel.file_data.document_service import document_service
+from lpm_kernel.file_data.memory_service import StorageService
 from lpm_kernel.kernel.chunk_service import ChunkService
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,18 @@ document_bp = Blueprint("documents", __name__, url_prefix="/api")
 
 # Ensure .env file is loaded
 load_dotenv()
+
+preview_storage_service = StorageService(Config.from_env())
+
+
+def _resolve_raw_content_directory(config: Config) -> Path:
+    """Resolve the configured raw-content directory for scan endpoints."""
+    configured_path = Path(config.get("USER_RAW_CONTENT_DIR", "resources/raw_content"))
+    if configured_path.is_absolute():
+        return configured_path
+
+    project_root = Path(__file__).resolve().parents[4]
+    return project_root / configured_path
 
 
 @document_bp.route("/documents/list", methods=["GET"])
@@ -32,10 +45,8 @@ def list_documents():
             documents = document_service.list_documents_with_l0()
             return jsonify(APIResponse.success(data=documents))
         else:
-            documents = document_service.list_documents()
-            return jsonify(
-                APIResponse.success(data=[doc.to_dict() for doc in documents])
-            )
+            documents = document_service.list_documents_for_api(include_l0=False)
+            return jsonify(APIResponse.success(data=documents))
     except Exception as e:
         logger.error(f"Error listing documents: {str(e)}", exc_info=True)
         return jsonify(APIResponse.error(message=f"Error listing documents: {str(e)}"))
@@ -46,13 +57,9 @@ def list_documents():
 def scan_documents():
     """Scan documents from configured directory and store them in database"""
     try:
-        # 2. Get project root directory and construct the full path
         config = Config.from_env()
-        relative_path = config.get("USER_RAW_CONTENT_DIR").lstrip("/")
-        project_root = Path(__file__).parent.parent.parent.parent.parent
-        full_path = project_root / relative_path
+        full_path = _resolve_raw_content_directory(config)
 
-        # 3. Scan and process files
         processed_doc_dtos = document_service.scan_directory(
             directory_path=str(full_path), recursive=True
         )
@@ -68,6 +75,32 @@ def scan_documents():
         logger.error(f"Unexpected error in scan_documents: {str(e)}", exc_info=True)
         return jsonify(
             APIResponse.error(message=f"Unexpected error in scan_documents: {str(e)}")
+        )
+
+
+@document_bp.route("/documents/scan/preview", methods=["POST"])
+def preview_scan_documents():
+    """Preview the configured raw-content directory scan without persisting documents."""
+    try:
+        config = Config.from_env()
+        full_path = _resolve_raw_content_directory(config)
+
+        preview_result = preview_storage_service.preview_directory_scan(
+            directory_path=str(full_path), recursive=True
+        )
+
+        logger.info(
+            f"Dry-run scan preview completed for {preview_result['summary']['total_files']} file(s)"
+        )
+
+        return jsonify(APIResponse.success(data=preview_result))
+
+    except Exception as e:
+        logger.error(f"Unexpected error in preview_scan_documents: {str(e)}", exc_info=True)
+        return jsonify(
+            APIResponse.error(
+                message=f"Unexpected error in preview_scan_documents: {str(e)}"
+            )
         )
 
 

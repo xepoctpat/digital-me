@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import InfoModal from '@/components/InfoModal';
 import type { TrainingConfig } from '@/service/train';
@@ -20,6 +20,7 @@ import CelebrationEffect from '@/components/Celebration';
 import TrainingLog from '@/components/train/TrainingLog';
 import TrainingProgress from '@/components/train/TrainingProgress';
 import TrainingConfiguration from '@/components/train/TrainingConfiguration';
+import GlobalBioPanel from '@/components/train/shades/GlobalBioPanel';
 import { ROUTER_PATH } from '@/utils/router';
 interface TrainInfo {
   name: string;
@@ -71,7 +72,7 @@ const pageTitle = 'Training Process';
 const pageDescription =
   'Transform your memories into a personalized AI model that thinks and communicates like you.';
 
-export default function TrainingPage() {
+export default function TrainingPage(): JSX.Element {
   const checkTrainStatus = useTrainingStore((state) => state.checkTrainStatus);
   const resetTrainingState = useTrainingStore((state) => state.resetTrainingState);
   const trainingError = useTrainingStore((state) => state.error);
@@ -101,41 +102,15 @@ export default function TrainingPage() {
   const trainSuspended = useTrainingStore((state) => state.trainSuspended);
   const setTrainSuspended = useTrainingStore((state) => state.setTrainSuspended);
 
-  useEffect(() => {
-    fetchModelConfig();
+  const stopPolling = useCallback(() => {
+    pollingStopRef.current = true;
   }, []);
 
-  useEffect(() => {
-    // Check CUDA availability once on load
-    checkCudaAvailability()
-      .then((res) => {
-        if (res.data.code === 0) {
-          const { cuda_available, cuda_info } = res.data.data;
-
-          setCudaAvailable(cuda_available);
-
-          if (cuda_available) {
-            console.log('CUDA is available:', cuda_info);
-          } else {
-            console.log('CUDA is not available on this system');
-          }
-        } else {
-          message.error(res.data.message || 'Failed to check CUDA availability');
-        }
-      })
-      .catch((err) => {
-        console.error('CUDA availability check failed', err);
-        message.error('CUDA availability check failed');
-      });
-  }, []);
-
-  // Start polling training progress
-  const startPolling = () => {
+  const startPolling = useCallback(() => {
     if (pollingStopRef.current) {
       return;
     }
 
-    // Start new polling
     checkTrainStatus()
       .then(() => {
         if (pollingStopRef.current) {
@@ -148,23 +123,92 @@ export default function TrainingPage() {
       })
       .catch((error) => {
         console.error('Training status check failed:', error);
-        stopPolling(); // Stop polling when error occurs
+        stopPolling();
         setIsTraining(false);
         message.error('Training status check failed, monitoring stopped');
       });
-  };
+  }, [checkTrainStatus, setIsTraining, stopPolling]);
 
-  const startGetTrainingProgress = () => {
+  const startGetTrainingProgress = useCallback(() => {
     pollingStopRef.current = false;
     setStatus('training');
     setIsTraining(true);
     startPolling();
-  };
+  }, [setIsTraining, setStatus, startPolling]);
 
-  // Stop polling
-  const stopPolling = () => {
-    pollingStopRef.current = true;
-  };
+  const scrollPageToBottom = useCallback(() => {
+    window.scrollTo({
+      top: document.documentElement.scrollHeight,
+      behavior: 'smooth'
+    });
+
+    firstLoadRef.current = false;
+  }, []);
+
+  const getDetails = useCallback(() => {
+    const eventSource = new EventSource(`/api/trainprocess/logs`);
+
+    eventSource.onmessage = (event) => {
+      const logMessage = event.data;
+
+      setTrainingDetails((prev) => {
+        const newLogs = [
+          ...prev.slice(-500),
+          {
+            message: logMessage,
+            timestamp: new Date().toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            })
+          }
+        ];
+
+        localStorage.setItem('trainingLogs', JSON.stringify(newLogs));
+
+        return newLogs;
+      });
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('EventSource failed:', error);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, []);
+
+  const updateTrainLog = useCallback(() => {
+    if (cleanupEventSourceRef.current) {
+      cleanupEventSourceRef.current();
+    }
+
+    cleanupEventSourceRef.current = getDetails();
+  }, [getDetails]);
+
+  useEffect(() => {
+    fetchModelConfig();
+  }, [fetchModelConfig]);
+
+  useEffect(() => {
+    // Check CUDA availability once on load
+    checkCudaAvailability()
+      .then((res) => {
+        if (res.data.code === 0) {
+          const { cuda_available } = res.data.data;
+
+          setCudaAvailable(cuda_available);
+        } else {
+          message.error(res.data.message || 'Failed to check CUDA availability');
+        }
+      })
+      .catch((err) => {
+        console.error('CUDA availability check failed', err);
+        message.error('CUDA availability check failed');
+      });
+  }, []);
 
   useEffect(() => {
     if (status === 'trained' || trainingError) {
@@ -180,7 +224,7 @@ export default function TrainingPage() {
         }, 1000);
       }
     }
-  }, [status, trainingError]);
+  }, [setIsTraining, status, stopPolling, trainingError]);
 
   // Check training status once when component loads
   useEffect(() => {
@@ -204,11 +248,11 @@ export default function TrainingPage() {
       }
 
       // Only proceed with training status check if memory check passes
-      checkTrainStatus();
+      await checkTrainStatus();
     };
 
-    checkMemoryCount();
-  }, []);
+    void checkMemoryCount();
+  }, [checkTrainStatus]);
 
   // Monitor training status changes and manage log connections
   useEffect(() => {
@@ -232,20 +276,21 @@ export default function TrainingPage() {
       stopPolling();
       setIsTraining(false);
     }
-  }, [trainingProgress]);
+  }, [scrollPageToBottom, setIsTraining, startGetTrainingProgress, stopPolling, trainingProgress]);
 
   useEffect(() => {
     if (isTraining) {
       updateTrainLog();
     }
-  }, [isTraining]);
+  }, [isTraining, updateTrainLog]);
 
   // Cleanup when component unmounts
   useEffect(() => {
     return () => {
       stopPolling();
+      cleanupEventSourceRef.current?.();
     };
-  }, []);
+  }, [stopPolling]);
 
   const [trainingDetails, setTrainingDetails] = useState<TrainingDetail[]>([]);
 
@@ -274,64 +319,8 @@ export default function TrainingPage() {
     setTrainingDetails(savedLogs ? JSON.parse(savedLogs) : []);
   }, []);
 
-  // Scroll to the bottom of the page
-  const scrollPageToBottom = () => {
-    window.scrollTo({
-      top: document.documentElement.scrollHeight,
-      behavior: 'smooth'
-    });
-    // Set that it's no longer the first load
-    firstLoadRef.current = false;
-  };
-
   const updateTrainingParams = (params: TrainingConfig) => {
     setTrainingParams((state: TrainingConfig) => ({ ...state, ...params }));
-  };
-
-  const getDetails = () => {
-    // Use EventSource to get logs
-    const eventSource = new EventSource(`/api/trainprocess/logs`);
-
-    eventSource.onmessage = (event) => {
-      // Don't try to parse as JSON, just use the raw text data directly
-      const logMessage = event.data;
-
-      setTrainingDetails((prev) => {
-        const newLogs = [
-          ...prev.slice(-500), // Keep more log entries (500 instead of 100)
-          {
-            message: logMessage,
-            timestamp: new Date().toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit'
-            })
-          }
-        ];
-
-        // Save logs to localStorage for persistence between page refreshes
-        localStorage.setItem('trainingLogs', JSON.stringify(newLogs));
-
-        return newLogs;
-      });
-    };
-
-    eventSource.onerror = (error) => {
-      console.error('EventSource failed:', error);
-      eventSource.close();
-    };
-
-    return () => {
-      eventSource.close();
-    };
-  };
-
-  const updateTrainLog = () => {
-    if (cleanupEventSourceRef.current) {
-      cleanupEventSourceRef.current();
-    }
-
-    cleanupEventSourceRef.current = getDetails();
   };
 
   // Handler function for stopping training
@@ -382,7 +371,6 @@ export default function TrainingPage() {
     resetTrainingState();
 
     try {
-      console.log('Using startTrain API to train new model:', trainingParams.model_name);
       const res = await startTrain({
         ...trainingParams,
         model_name: trainingParams.model_name
@@ -526,10 +514,10 @@ export default function TrainingPage() {
         <TrainingConfiguration
           baseModelOptions={baseModelOptions}
           cudaAvailable={cudaAvailable}
-          handleResetProgress={handleResetProgress}
-          handleTrainingAction={handleTrainingAction}
           isTraining={isTraining}
           modelConfig={modelConfig}
+          onResetProgress={handleResetProgress}
+          onTrainingAction={handleTrainingAction}
           setSelectedInfo={setSelectedInfo}
           status={status}
           trainActionLoading={trainActionLoading}
@@ -541,10 +529,10 @@ export default function TrainingPage() {
         {/* Only show training progress after training starts */}
         {(status === 'training' || status === 'trained') && renderTrainingProgress()}
 
+        <GlobalBioPanel />
+
         {/* Always show training log regardless of training status */}
         {renderTrainingLog()}
-
-        {/* L1 and L2 Panels - show when training is complete or model is running */}
 
         <InfoModal
           content={

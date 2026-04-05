@@ -1,10 +1,17 @@
 FROM --platform=linux/arm64 python:3.12-bullseye
 
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_CACHE_DIR=/tmp/pypoetry-cache \
+    ANONYMIZED_TELEMETRY=false
+
 # Set working directory
 WORKDIR /app
 
 # 1. Install system dependencies (including SQLite compilation dependencies)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake git curl wget lsof vim unzip \
     libsqlite3-dev tcl-dev tk-dev \
     && apt-get clean \
@@ -27,12 +34,11 @@ ENV LDFLAGS="-L/usr/local/lib -lsqlite3"
 ENV LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
 
 # 4. Configure Python environment
-RUN pip install --upgrade pip \
-    && pip install poetry \
-    && poetry config virtualenvs.create false
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir poetry
 
 # 5. Force source code compilation of pysqlite3
-RUN pip install pysqlite3 --no-binary pysqlite3
+RUN pip install --no-cache-dir pysqlite3 --no-binary pysqlite3
 
 # 6. Verify SQLite version
 RUN python -c "import sqlite3; print('SQLite version:', sqlite3.sqlite_version); assert sqlite3.sqlite_version.startswith('3.49.1'), 'Wrong SQLite version!'"
@@ -67,14 +73,13 @@ RUN LLAMA_LOCAL_ZIP="dependencies/llama.cpp.zip" \
 # Copy project configuration
 COPY pyproject.toml README.md /app/
 
-RUN pip install -U pip setuptools wheel
-RUN pip install --no-cache-dir spacy==3.7.5
-RUN pip install --force-reinstall dependencies/graphrag-modified.tar.gz
-
-RUN pip uninstall -y chromadb \
- && pip install chromadb==0.4.24 --no-binary chromadb --force-reinstall 
-
-RUN poetry install --no-interaction --no-root
+RUN pip install --no-cache-dir -U pip setuptools wheel \
+    && pip install --no-cache-dir spacy==3.7.5 \
+    && pip install --no-cache-dir --force-reinstall dependencies/graphrag-modified.tar.gz \
+    && pip uninstall -y chromadb \
+    && pip install --no-cache-dir chromadb==0.4.24 --no-binary chromadb --force-reinstall \
+    && poetry install --without docs --no-root \
+    && rm -rf "$POETRY_CACHE_DIR" /root/.cache/pip /root/.cache/pypoetry
 
 # Copy source code
 COPY docker/ /app/docker/
