@@ -50,7 +50,9 @@ const nextConfig = {
     ];
   },
   experimental: {
-    proxyTimeout: 0
+    proxyTimeout: 0,
+    esmExternals: true,
+    serverMinification: false
   },
   compiler: {
     styledComponents: true
