@@ -21,6 +21,59 @@ function Get-SecondMeLogsDir {
 	return (Join-Path $RepoRoot 'logs')
 }
 
+function Resolve-SecondMeEnvTemplatePath {
+	param(
+		[string]$RepoRoot = (Get-SecondMeRepoRoot)
+	)
+
+	$candidates = @(
+		(Join-Path $RepoRoot '.env.template'),
+		(Join-Path $RepoRoot '.env.example')
+	)
+
+	foreach ($candidate in $candidates) {
+		if (Test-Path $candidate) {
+			return $candidate
+		}
+	}
+
+	return $null
+}
+
+function Resolve-SecondMeEnvFilePath {
+	param(
+		[string]$RepoRoot = (Get-SecondMeRepoRoot)
+	)
+
+	$localEnvPath = Join-Path $RepoRoot '.env'
+	if (Test-Path $localEnvPath) {
+		return $localEnvPath
+	}
+
+	return (Resolve-SecondMeEnvTemplatePath -RepoRoot $RepoRoot)
+}
+
+function Ensure-SecondMeEnvFile {
+	param(
+		[string]$RepoRoot = (Get-SecondMeRepoRoot)
+	)
+
+	$localEnvPath = Join-Path $RepoRoot '.env'
+	if (Test-Path $localEnvPath) {
+		return $localEnvPath
+	}
+
+	$templatePath = Resolve-SecondMeEnvTemplatePath -RepoRoot $RepoRoot
+	if (-not $templatePath) {
+		throw "Environment file not found. Expected one of: $localEnvPath, $(Join-Path $RepoRoot '.env.template'), $(Join-Path $RepoRoot '.env.example')"
+	}
+
+	Copy-Item -Path $templatePath -Destination $localEnvPath -Force
+	Write-SecondMeWarning "Created local .env from $(Split-Path -Leaf $templatePath). Edit it only if you need machine-specific overrides."
+
+	return $localEnvPath
+}
+
 function Normalize-OpenAIBaseUrl {
 	param([string]$Url)
 

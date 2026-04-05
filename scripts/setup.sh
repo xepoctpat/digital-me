@@ -3,6 +3,7 @@
 # Import utility scripts
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/utils/logging.sh"
+source "$SCRIPT_DIR/utils/env.sh"
 source "$SCRIPT_DIR/utils/os_detection.sh"
 source "$SCRIPT_DIR/utils/install_config.sh"
 source "$SCRIPT_DIR/utils/python_tools.sh"
@@ -416,11 +417,9 @@ check_system_requirements() {
 check_config_files() {
     log_step "Checking necessary configuration files"
     
-    # Check for .env file
-    if [[ ! -f ".env" ]]; then
-        log_error "Missing .env file"
-        return 1
-    fi
+    local env_file
+    env_file="$(ensure_secondme_env_file "$(pwd)")" || return 1
+    log_info "Using environment file: $env_file"
     
     log_success "All necessary configuration files are present"
     return 0

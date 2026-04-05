@@ -14,7 +14,8 @@ if ($BackendOnly -and $FrontendOnly) {
 . (Join-Path $PSScriptRoot 'utils\windows-local.ps1')
 
 $repoRoot = Get-SecondMeRepoRoot
-$envMap = Read-EnvFile -Path (Join-Path $repoRoot '.env')
+$envFile = Ensure-SecondMeEnvFile -RepoRoot $repoRoot
+$envMap = Read-EnvFile -Path $envFile
 $stateDir = Get-SecondMeWindowsStateDir -RepoRoot $repoRoot
 $backendPidFile = Join-Path $stateDir 'backend.pid'
 $frontendPidFile = Join-Path $stateDir 'frontend.pid'
@@ -22,6 +23,7 @@ $backendPort = [int](Get-EnvValue -Environment $envMap -Key 'LOCAL_APP_PORT' -De
 $frontendPort = [int](Get-EnvValue -Environment $envMap -Key 'LOCAL_FRONTEND_PORT' -DefaultValue '3000')
 
 Write-SecondMeSection 'Stopping local services'
+Write-SecondMeInfo "Environment file: $envFile"
 
 $stoppedAnything = $false
 

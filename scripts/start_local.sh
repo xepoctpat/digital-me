@@ -3,6 +3,7 @@
 # Source the logging utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils/logging.sh"
+source "${SCRIPT_DIR}/utils/env.sh"
 
 # Activate Poetry virtual environment if available (but only if not already activated)
 log_info "Setting up Python environment..."
@@ -35,9 +36,11 @@ fi
 log_info "Setting environment variables..."
 export PYTHONPATH=$(pwd):${PYTHONPATH}
 
-# Load environment variables from .env file
+# Load environment variables from the local .env file or shared template
+ENV_FILE="$(ensure_secondme_env_file "$(pwd)")" || exit 1
+log_info "Using environment file: ${ENV_FILE}"
 set -a
-source .env
+source "$ENV_FILE"
 set +a
 
 # Use local base directory

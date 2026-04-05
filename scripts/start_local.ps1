@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'utils\windows-local.ps1')
 
 $repoRoot = Get-SecondMeRepoRoot
-$envFile = Join-Path $repoRoot '.env'
+$envFile = Ensure-SecondMeEnvFile -RepoRoot $repoRoot
 $envMap = Read-EnvFile -Path $envFile
 $stateDir = Get-SecondMeWindowsStateDir -RepoRoot $repoRoot
 $logsDir = Get-SecondMeLogsDir -RepoRoot $repoRoot
@@ -29,6 +29,7 @@ $effectiveLocalLLMUrl = Normalize-OpenAIBaseUrl -Url $(if ($LocalLLMUrl) { $Loca
 
 Write-SecondMeSection 'Starting local backend'
 Write-SecondMeInfo "Repository root: $repoRoot"
+Write-SecondMeInfo "Environment file: $envFile"
 Write-SecondMeInfo "Python: $pythonExe"
 Write-SecondMeInfo "Backend URL: http://127.0.0.1:$backendPort"
 Write-SecondMeInfo "Local LLM URL: $effectiveLocalLLMUrl"

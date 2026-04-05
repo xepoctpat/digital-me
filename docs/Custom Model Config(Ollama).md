@@ -103,7 +103,12 @@ For the verified Ollama flow, the following local environment values matter most
 | `LOCAL_BASE_DIR` | `.` | Local filesystem base path |
 | `LOCAL_LOG_DIR` | `logs` | Local log directory |
 
-The verified `.env` values for this workflow are:
+The repository now includes both `.env.template` and `.env.example` with safe generic defaults for this workflow.
+
+- If `.env` is missing, the first-party setup and launch scripts create a local `.env` automatically from the template.
+- You only need to edit `.env` when your machine, ports, or provider setup differ from the default path.
+
+The default env values for this workflow are:
 
 ```dotenv
 LOCAL_LLM_SERVICE_URL=http://127.0.0.1:11434/v1
@@ -127,6 +132,8 @@ Run:
 ```
 
 This installs Python and frontend dependencies for the native workflow.
+
+If `.env` does not exist yet, the setup and start scripts create it locally from `.env.template`.
 
 > `-BuildLlama` is **not required** for the Ollama path.
 

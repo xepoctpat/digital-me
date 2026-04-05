@@ -52,13 +52,25 @@ class Config:
         if cls._instance is not None:
             return cls._instance
 
-        # Load .env file
-        env_path = Path(env_file) if env_file else Path(__file__).parent.parent.parent / ".env"
+        # Load environment file, falling back to shareable templates when a local
+        # .env has not been created yet.
+        if env_file:
+            env_candidates = [Path(env_file)]
+        else:
+            repo_root = Path(__file__).parent.parent.parent
+            env_candidates = [
+                repo_root / ".env",
+                repo_root / ".env.template",
+                repo_root / ".env.example",
+            ]
 
-        if env_path.exists():
+        env_path = next((candidate for candidate in env_candidates if candidate.exists()), None)
+
+        if env_path is not None:
             load_dotenv(env_path)
         else:
-            raise FileNotFoundError(f"Config file not found: {env_path}")
+            expected_paths = ", ".join(str(candidate) for candidate in env_candidates)
+            raise FileNotFoundError(f"Config file not found. Expected one of: {expected_paths}")
 
         # Get base directory configuration
         base_dir = os.getenv("BASE_DIR", "/app")

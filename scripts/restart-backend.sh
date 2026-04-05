@@ -3,15 +3,22 @@
 # Source the logging utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils/logging.sh"
+source "${SCRIPT_DIR}/utils/env.sh"
 
 # Load configuration from .env file
 load_env() {
-    if [ -f .env ]; then
+    local env_file
+    env_file="$(resolve_secondme_env_file "$(pwd)")"
+
+    if [[ -n "$env_file" && -f "$env_file" ]]; then
         # Only load necessary environment variables
-        export LOCAL_APP_PORT=$(grep '^LOCAL_APP_PORT=' .env | cut -d '=' -f2)
+        export LOCAL_APP_PORT=$(get_env_value_from_file "$env_file" 'LOCAL_APP_PORT' '8002')
+        export LOCAL_BASE_DIR=$(get_env_value_from_file "$env_file" 'LOCAL_BASE_DIR' '.')
+        log_info "Using environment file: $env_file"
     else
         # Use default port if .env not found
         export LOCAL_APP_PORT=8002
+        export LOCAL_BASE_DIR=.
         log_info "Using default port: ${LOCAL_APP_PORT}"
     fi
 }

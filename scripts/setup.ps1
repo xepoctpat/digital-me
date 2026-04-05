@@ -10,11 +10,13 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'utils\windows-local.ps1')
 
 $repoRoot = Get-SecondMeRepoRoot
+$envFile = Ensure-SecondMeEnvFile -RepoRoot $repoRoot
 $poetry = Get-Command poetry -ErrorAction SilentlyContinue
 $pythonExe = Get-PythonExecutable -RepoRoot $repoRoot
 
 Write-SecondMeSection 'Setting up local Windows development environment'
 Write-SecondMeInfo "Repository root: $repoRoot"
+Write-SecondMeInfo "Environment file: $envFile"
 Write-SecondMeInfo "Python: $pythonExe"
 
 if ($poetry) {

@@ -6,6 +6,7 @@ VERSION="1.0.0"
 # Source the logging utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils/logging.sh"
+source "${SCRIPT_DIR}/utils/env.sh"
 
 # Check if port is available
 check_port() {
@@ -143,24 +144,15 @@ start_services() {
     fi
 
     log_step "Loading environment variables"
+    local env_file
+    env_file="$(ensure_secondme_env_file "$(pwd)")" || return 1
     
     # Load environment variables
-    if [[ -f .env ]]; then
-        export LOCAL_APP_PORT="$(grep '^LOCAL_APP_PORT=' .env | cut -d '=' -f2)"
-        export LOCAL_FRONTEND_PORT="$(grep '^LOCAL_FRONTEND_PORT=' .env | cut -d '=' -f2)"
-        
-        if [[ -z "$LOCAL_APP_PORT" ]]; then
-            export LOCAL_APP_PORT="8002"
-        fi
-        if [[ -z "$LOCAL_FRONTEND_PORT" ]]; then
-            export LOCAL_FRONTEND_PORT="3000"
-        fi
-    else
-        log_error ".env file not found!"
-        return 1
-    fi
+    export LOCAL_APP_PORT="$(get_env_value_from_file "$env_file" 'LOCAL_APP_PORT' '8002')"
+    export LOCAL_FRONTEND_PORT="$(get_env_value_from_file "$env_file" 'LOCAL_FRONTEND_PORT' '3000')"
     
     log_success "Environment variables loaded"
+    log_info "Using environment file: $env_file"
     
     # Check if ports are available
     log_step "Checking port availability..."
@@ -207,12 +199,12 @@ start_services() {
 
         # Copy environment variables from root directory to frontend directory
         log_info "Copying environment variables to frontend directory..."
-        if [[ -f "../.env" ]]; then
+        if [[ -f "$env_file" ]]; then
             # Extract required environment variables and create frontend .env file
-            grep -E "^(HOST_ADDRESS|LOCAL_APP_PORT|ENABLE_PUBLIC_NETWORK|PUBLIC_APP_BASE_URL)=" "../.env" > .env
+            grep -E "^(HOST_ADDRESS|LOCAL_APP_PORT|ENABLE_PUBLIC_NETWORK|PUBLIC_APP_BASE_URL)=" "$env_file" > .env
             log_success "Environment variables copied to frontend .env file"
         else
-            log_warning "Root directory .env file does not exist, cannot copy environment variables"
+            log_warning "Environment file does not exist, cannot copy environment variables"
         fi
         
         # Check if node_modules exists

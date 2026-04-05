@@ -13,7 +13,8 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'utils\windows-local.ps1')
 
 $repoRoot = Get-SecondMeRepoRoot
-$envMap = Read-EnvFile -Path (Join-Path $repoRoot '.env')
+$envFile = Ensure-SecondMeEnvFile -RepoRoot $repoRoot
+$envMap = Read-EnvFile -Path $envFile
 $stateDir = Get-SecondMeWindowsStateDir -RepoRoot $repoRoot
 $logsDir = Get-SecondMeLogsDir -RepoRoot $repoRoot
 $frontendPidFile = Join-Path $stateDir 'frontend.pid'
@@ -36,6 +37,7 @@ else {
 }
 
 Write-SecondMeSection 'Starting local services'
+Write-SecondMeInfo "Environment file: $envFile"
 Write-SecondMeInfo "Backend URL: http://127.0.0.1:$backendPort"
 Write-SecondMeInfo "Frontend URL: $frontendUrl"
 Write-SecondMeInfo "Local LLM URL: $effectiveLocalLLMUrl"
